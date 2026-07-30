@@ -1,0 +1,10 @@
+{
+  "name": "@pocketcloud/blueprint",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.ts",
+  "dependencies": {
+    "zod": "^3.23.8"
+  }
+}

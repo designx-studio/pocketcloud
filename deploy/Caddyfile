@@ -1,0 +1,21 @@
+{$POCKETCLOUD_DOMAIN:localhost} {
+  encode gzip zstd
+
+  @agent-releases path /api/v1/agent/releases/* /api/v1/agent/releases
+  handle @agent-releases {
+    reverse_proxy agent-registry:8081
+  }
+
+  @api path /api/* /health /docs/*
+  handle @api {
+    reverse_proxy api:8080
+  }
+
+  handle {
+    reverse_proxy dashboard:3000
+  }
+
+  header {
+    -Server X-Powered-By
+  }
+}

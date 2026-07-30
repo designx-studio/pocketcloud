@@ -1,0 +1,26 @@
+{
+  "name": "pocketcloud",
+  "private": true,
+  "version": "1.1.0",
+  "workspaces": [
+    "apps/api",
+    "packages/blueprint"
+  ],
+  "scripts": {
+    "build": "npm run build -w apps/api",
+    "preview": "npx -y serve -p 3000 .",
+    "test": "vitest run",
+    "lint": "npm run lint -w apps/api",
+    "dev": "npm run dev -w apps/api",
+    "format:check": "npm run format:check -w apps/api",
+    "db:setup": "cd apps/api && DATABASE_URL=file:./dev.db npx prisma migrate dev --schema prisma/schema.sqlite.prisma --name init",
+    "db:setup:win": "cd apps/api && set DATABASE_URL=file:./dev.db && npx prisma migrate dev --schema prisma/schema.sqlite.prisma --name init",
+    "db:reset": "cd apps/api && DATABASE_URL=file:./dev.db npx prisma migrate reset --schema prisma/schema.sqlite.prisma --force",
+    "db:studio": "cd apps/api && DATABASE_URL=file:./dev.db npx prisma studio --schema prisma/schema.sqlite.prisma",
+    "db:push": "cd apps/api && DATABASE_URL=file:./dev.db npx prisma db push --schema prisma/schema.sqlite.prisma"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+
