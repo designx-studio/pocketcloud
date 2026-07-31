@@ -1,2 +1,32 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
--- Schema is generated from prisma/schema.prisma during deployment.
+
+CREATE TABLE "User" ("id" TEXT NOT NULL, "email" TEXT NOT NULL, "passwordHash" TEXT NOT NULL, "role" TEXT NOT NULL DEFAULT 'OWNER', "emailVerifiedAt" TIMESTAMP(3), "mfaEnabled" BOOLEAN NOT NULL DEFAULT false, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL, CONSTRAINT "User_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+CREATE TABLE "Session" ("id" TEXT NOT NULL, "userId" TEXT NOT NULL, "refreshHash" TEXT NOT NULL, "expiresAt" TIMESTAMP(3) NOT NULL, "revokedAt" TIMESTAMP(3), "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "Session_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "Session_refreshHash_key" ON "Session"("refreshHash");
+CREATE TABLE "Server" ("id" TEXT NOT NULL, "name" TEXT NOT NULL, "provider" TEXT NOT NULL, "ipAddress" TEXT NOT NULL, "os" TEXT NOT NULL, "architecture" TEXT, "environment" TEXT, "status" TEXT NOT NULL DEFAULT 'PENDING', "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL, CONSTRAINT "Server_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "Agent" ("id" TEXT NOT NULL, "serverId" TEXT NOT NULL, "version" TEXT, "publicKey" TEXT, "credentialHash" TEXT NOT NULL, "lastSeenAt" TIMESTAMP(3), "connectedAt" TIMESTAMP(3), "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "Agent_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "Agent_serverId_key" ON "Agent"("serverId"); CREATE UNIQUE INDEX "Agent_credentialHash_key" ON "Agent"("credentialHash");
+CREATE TABLE "BootstrapToken" ("id" TEXT NOT NULL, "serverId" TEXT NOT NULL, "tokenHash" TEXT NOT NULL, "expiresAt" TIMESTAMP(3) NOT NULL, "usedAt" TIMESTAMP(3), "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "BootstrapToken_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "BootstrapToken_tokenHash_key" ON "BootstrapToken"("tokenHash");
+CREATE TABLE "Task" ("id" TEXT NOT NULL, "serverId" TEXT NOT NULL, "type" TEXT NOT NULL, "payload" TEXT NOT NULL DEFAULT '{}', "status" TEXT NOT NULL DEFAULT 'QUEUED', "requestedBy" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "startedAt" TIMESTAMP(3), "finishedAt" TIMESTAMP(3), CONSTRAINT "Task_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "TaskLog" ("id" TEXT NOT NULL, "taskId" TEXT NOT NULL, "level" TEXT NOT NULL, "message" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "TaskLog_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "Blueprint" ("id" TEXT NOT NULL, "serverId" TEXT NOT NULL, "name" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL, CONSTRAINT "Blueprint_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "BlueprintVersion" ("id" TEXT NOT NULL, "blueprintId" TEXT NOT NULL, "version" INTEGER NOT NULL, "manifest" TEXT NOT NULL, "checksum" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "BlueprintVersion_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "BlueprintVersion_blueprintId_version_key" ON "BlueprintVersion"("blueprintId","version");
+CREATE TABLE "HealthMetric" ("id" TEXT NOT NULL, "serverId" TEXT NOT NULL, "cpu" DOUBLE PRECISION NOT NULL, "memory" DOUBLE PRECISION NOT NULL, "disk" DOUBLE PRECISION NOT NULL, "load" DOUBLE PRECISION NOT NULL, "swap" DOUBLE PRECISION NOT NULL, "uptime" BIGINT NOT NULL DEFAULT 0, "collectedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE UNIQUE INDEX "HealthMetric_pkey" ON "HealthMetric"("id"); CREATE TABLE "Heartbeat" ("id" TEXT NOT NULL, "serverId" TEXT NOT NULL, "payload" TEXT NOT NULL DEFAULT '{}', "receivedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "Heartbeat_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "AuditLog" ("id" TEXT NOT NULL, "userId" TEXT, "action" TEXT NOT NULL, "resource" TEXT NOT NULL, "resourceId" TEXT, "metadata" TEXT, "ipAddress" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "AuditLog_pkey" PRIMARY KEY ("id"));
+CREATE INDEX "AuditLog_createdAt_idx" ON "AuditLog"("createdAt");
+CREATE TABLE "Setting" ("key" TEXT NOT NULL, "value" TEXT NOT NULL, "category" TEXT NOT NULL DEFAULT 'advanced', "isSecret" BOOLEAN NOT NULL DEFAULT false, "updatedBy" TEXT, "updatedAt" TIMESTAMP(3) NOT NULL, CONSTRAINT "Setting_pkey" PRIMARY KEY ("key"));
+CREATE TABLE "Backup" ("id" TEXT NOT NULL, "path" TEXT NOT NULL, "checksum" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "createdBy" TEXT NOT NULL, CONSTRAINT "Backup_pkey" PRIMARY KEY ("id"));
+ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Agent" ADD CONSTRAINT "Agent_serverId_fkey" FOREIGN KEY ("serverId") REFERENCES "Server"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "BootstrapToken" ADD CONSTRAINT "BootstrapToken_serverId_fkey" FOREIGN KEY ("serverId") REFERENCES "Server"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Task" ADD CONSTRAINT "Task_serverId_fkey" FOREIGN KEY ("serverId") REFERENCES "Server"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "TaskLog" ADD CONSTRAINT "TaskLog_taskId_fkey" FOREIGN KEY ("taskId") REFERENCES "Task"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Blueprint" ADD CONSTRAINT "Blueprint_serverId_fkey" FOREIGN KEY ("serverId") REFERENCES "Server"("id") ON UPDATE CASCADE;
+ALTER TABLE "BlueprintVersion" ADD CONSTRAINT "BlueprintVersion_blueprintId_fkey" FOREIGN KEY ("blueprintId") REFERENCES "Blueprint"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "HealthMetric" ADD CONSTRAINT "HealthMetric_serverId_fkey" FOREIGN KEY ("serverId") REFERENCES "Server"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Heartbeat" ADD CONSTRAINT "Heartbeat_serverId_fkey" FOREIGN KEY ("serverId") REFERENCES "Server"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON UPDATE CASCADE;
