@@ -1,0 +1,3 @@
+ALTER TABLE "Setting" ADD COLUMN "category" TEXT NOT NULL DEFAULT 'advanced';
+ALTER TABLE "Setting" ADD COLUMN "isSecret" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Setting" ADD COLUMN "updatedBy" TEXT;
