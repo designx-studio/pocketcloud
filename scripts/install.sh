@@ -6,6 +6,7 @@ set -Eeuo pipefail
 POCKETCLOUD_DOMAIN="${POCKETCLOUD_DOMAIN:-localhost}"
 PREFIX=/opt/pocketcloud
 SOURCE_ROOT="${POCKETCLOUD_SOURCE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)}"
+COMPOSE_FILE="$PREFIX/deploy/docker-compose.yml"
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info() { echo -e "${GREEN}[INFO]${NC}  $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC}  $*"; }
@@ -40,7 +41,6 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 install -d -m 0750 "$PREFIX"
-# Copy the complete checked-out repository so Compose's build context and Dockerfile paths resolve.
 rsync -a --delete --exclude '.git' --exclude '.env' "$SOURCE_ROOT/" "$PREFIX/"
 install -d -m 0750 "$PREFIX/config" "$PREFIX/storage/redis" "$PREFIX/storage/caddy" "$PREFIX/database" "$PREFIX/backups" "$PREFIX/logs" "$PREFIX/blueprints" "$PREFIX/agent-releases"
 if [[ ! -f "$PREFIX/.env" ]]; then
@@ -64,23 +64,26 @@ EOF
 fi
 
 cd "$PREFIX"
-docker compose --env-file .env up -d --build
+# Compose paths are relative to deploy/, while the build context is the repository root.
+# The symlink lets services using env_file: .env resolve the generated root environment.
+ln -sfn ../.env "$PREFIX/deploy/.env"
+docker compose --project-directory "$PREFIX" --file "$COMPOSE_FILE" --env-file "$PREFIX/.env" up -d --build
 
 info "Waiting for PostgreSQL to be ready..."
 for i in {1..30}; do
-  if docker compose exec -T database pg_isready -U pocketcloud -d pocketcloud >/dev/null 2>&1; then break; fi
+  if docker compose --project-directory "$PREFIX" --file "$COMPOSE_FILE" exec -T database pg_isready -U pocketcloud -d pocketcloud >/dev/null 2>&1; then break; fi
   [[ $i -eq 30 ]] && die "PostgreSQL did not become ready in 60 seconds."
   sleep 2
 done
 
-docker compose exec -T api npx prisma migrate deploy
+docker compose --project-directory "$PREFIX" --file "$COMPOSE_FILE" exec -T api npx prisma migrate deploy
 info "Waiting for API to become healthy..."
 for i in {1..30}; do
-  if docker compose exec -T api wget -qO- http://127.0.0.1:8080/health >/dev/null 2>&1; then
+  if docker compose --project-directory "$PREFIX" --file "$COMPOSE_FILE" exec -T api wget -qO- http://127.0.0.1:8080/health >/dev/null 2>&1; then
     info "API is healthy ✔"
     break
   fi
-  [[ $i -eq 30 ]] && { docker compose ps; die "API health check failed."; }
+  [[ $i -eq 30 ]] && { docker compose --project-directory "$PREFIX" --file "$COMPOSE_FILE" ps; die "API health check failed."; }
   sleep 2
 done
 
@@ -89,4 +92,4 @@ echo -e "${GREEN}PocketCloud installed successfully!${NC}"
 echo "Dashboard: https://${POCKETCLOUD_DOMAIN}"
 echo "API Docs:  https://${POCKETCLOUD_DOMAIN}/docs"
 echo "Secrets:   $PREFIX/.env"
-docker compose ps
+docker compose --project-directory "$PREFIX" --file "$COMPOSE_FILE" ps
