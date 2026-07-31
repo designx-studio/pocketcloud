@@ -6,8 +6,13 @@ import { config } from './config.js';
 const prisma = new PrismaClient();
 const app = Fastify({ logger: true });
 app.addHook('preHandler', async (req, reply) => {
+  if (req.url === '/health') return;
+  console.log('Incoming headers for settings request:', JSON.stringify(req.headers));
   const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) return reply.code(401).send({ error: 'unauthorized' });
+  if (!header?.startsWith('Bearer ')) {
+    console.log('Authorization check failed: header is', header);
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
   try {
     const auth = await verifyAccess(header.slice(7));
     if (auth.role === 'VIEWER') return reply.code(403).send({ error: 'forbidden', message: 'Administrator access is required.' });

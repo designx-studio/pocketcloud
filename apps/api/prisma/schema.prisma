@@ -1,7 +1,8 @@
 // PostgreSQL schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -21,16 +22,155 @@ model User {
   sessions        Session[]
   auditLogs       AuditLog[]
 }
-model Session { id String @id @default(uuid()); userId String; user User @relation(fields: [userId], references: [id], onDelete: Cascade); refreshHash String @unique; expiresAt DateTime; revokedAt DateTime?; createdAt DateTime @default(now()) }
-model Server { id String @id @default(uuid()); name String; provider String; ipAddress String; os String; architecture String?; environment String?; status String @default("PENDING"); agent Agent?; metrics HealthMetric[]; heartbeats Heartbeat[]; tasks Task[]; blueprints Blueprint[]; bootstrapTokens BootstrapToken[]; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt }
-model Agent { id String @id @default(uuid()); serverId String @unique; server Server @relation(fields: [serverId], references: [id], onDelete: Cascade); version String?; publicKey String?; credentialHash String @unique; lastSeenAt DateTime?; connectedAt DateTime?; createdAt DateTime @default(now()) }
-model BootstrapToken { id String @id @default(uuid()); serverId String; server Server @relation(fields: [serverId], references: [id], onDelete: Cascade); tokenHash String @unique; expiresAt DateTime; usedAt DateTime?; createdAt DateTime @default(now()) }
-model Task { id String @id @default(uuid()); serverId String; server Server @relation(fields: [serverId], references: [id], onDelete: Cascade); type String; payload String @default("{}"); status String @default("QUEUED"); requestedBy String; createdAt DateTime @default(now()); startedAt DateTime?; finishedAt DateTime?; logs TaskLog[] }
-model TaskLog { id String @id @default(uuid()); taskId String; task Task @relation(fields: [taskId], references: [id], onDelete: Cascade); level String; message String; createdAt DateTime @default(now()) }
-model Blueprint { id String @id @default(uuid()); serverId String; server Server @relation(fields: [serverId], references: [id]); name String; versions BlueprintVersion[]; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt }
-model BlueprintVersion { id String @id @default(uuid()); blueprintId String; blueprint Blueprint @relation(fields: [blueprintId], references: [id], onDelete: Cascade); version Int; manifest String; checksum String; createdAt DateTime @default(now()); @@unique([blueprintId, version]) }
-model HealthMetric { id String @id @default(uuid()); serverId String; server Server @relation(fields: [serverId], references: [id], onDelete: Cascade); cpu Float; memory Float; disk Float; load Float; swap Float; uptime BigInt @default(0); collectedAt DateTime @default(now()); @@index([serverId, collectedAt]) }
-model Heartbeat { id String @id @default(uuid()); serverId String; server Server @relation(fields: [serverId], references: [id], onDelete: Cascade); payload String @default("{}"); receivedAt DateTime @default(now()); @@index([serverId, receivedAt]) }
-model AuditLog { id String @id @default(uuid()); userId String?; user User? @relation(fields: [userId], references: [id]); action String; resource String; resourceId String?; metadata String?; ipAddress String?; createdAt DateTime @default(now()); @@index([createdAt]) }
-model Setting { key String @id; value String; category String @default("advanced"); isSecret Boolean @default(false); updatedBy String?; updatedAt DateTime @updatedAt }
-model Backup { id String @id @default(uuid()); path String; checksum String; createdAt DateTime @default(now()); createdBy String }
+
+model Session {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshHash String    @unique
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model Server {
+  id              String           @id @default(uuid())
+  name            String
+  provider        String
+  ipAddress       String
+  os              String
+  architecture    String?
+  environment     String?
+  status          String           @default("PENDING")
+  agent           Agent?
+  metrics         HealthMetric[]
+  heartbeats      Heartbeat[]
+  tasks           Task[]
+  blueprints      Blueprint[]
+  bootstrapTokens BootstrapToken[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model Agent {
+  id             String    @id @default(uuid())
+  serverId       String    @unique
+  server         Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  version        String?
+  publicKey      String?
+  credentialHash String    @unique
+  lastSeenAt     DateTime?
+  connectedAt    DateTime?
+  createdAt      DateTime  @default(now())
+}
+
+model BootstrapToken {
+  id         String    @id @default(uuid())
+  serverId   String
+  server     Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  serverId    String
+  server      Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  type        String
+  payload     String    @default("{}")
+  status      String    @default("QUEUED")
+  requestedBy String
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  logs        TaskLog[]
+}
+
+model TaskLog {
+  id        String   @id @default(uuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  level     String
+  message   String
+  createdAt DateTime @default(now())
+}
+
+model Blueprint {
+  id        String             @id @default(uuid())
+  serverId  String
+  server    Server             @relation(fields: [serverId], references: [id])
+  name      String
+  versions  BlueprintVersion[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+}
+
+model BlueprintVersion {
+  id          String    @id @default(uuid())
+  blueprintId String
+  blueprint   Blueprint @relation(fields: [blueprintId], references: [id], onDelete: Cascade)
+  version     Int
+  manifest    String
+  checksum    String
+  createdAt   DateTime  @default(now())
+
+  @@unique([blueprintId, version])
+}
+
+model HealthMetric {
+  id          String   @id @default(uuid())
+  serverId    String
+  server      Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  cpu         Float
+  memory      Float
+  disk        Float
+  load        Float
+  swap        Float
+  uptime      BigInt   @default(0)
+  collectedAt DateTime @default(now())
+
+  @@index([serverId, collectedAt])
+}
+
+model Heartbeat {
+  id         String   @id @default(uuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  payload    String   @default("{}")
+  receivedAt DateTime @default(now())
+
+  @@index([serverId, receivedAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  resource   String
+  resourceId String?
+  metadata   String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  category  String   @default("advanced")
+  isSecret  Boolean  @default(false)
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+}
+
+model Backup {
+  id        String   @id @default(uuid())
+  path      String
+  checksum  String
+  createdAt DateTime @default(now())
+  createdBy String
+}

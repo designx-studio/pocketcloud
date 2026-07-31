@@ -397,7 +397,7 @@ app.get('/api/v1/servers/:id/metrics', async (req, reply) => {
   });
 
   // Return in ascending time order for charting
-  return metrics.reverse().map(m => ({
+  return metrics.reverse().map((m: any) => ({
     ...m,
     uptime: Number(m.uptime) // BigInt → number for JSON serialisation
   }));
@@ -415,7 +415,7 @@ app.get('/api/v1/servers/:id/logs', async (req, reply) => {
     select: { payload: true, receivedAt: true }
   });
 
-  return heartbeats.map(h => ({
+  return heartbeats.map((h: any) => ({
     receivedAt: h.receivedAt,
     payload: h.payload
   }));

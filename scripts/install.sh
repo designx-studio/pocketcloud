@@ -14,7 +14,7 @@ TOTAL_MEM_KB=$(awk '/MemTotal/{print $2}' /proc/meminfo); [[ $TOTAL_MEM_KB -ge 1
 apt-get update -qq; apt-get install -y -qq ca-certificates curl openssl gnupg lsb-release rsync tar
 if ! command -v docker >/dev/null 2>&1;then install -m0755 -d /etc/apt/keyrings; curl --fail --proto '=https' --tlsv1.2 https://download.docker.com/linux/ubuntu/gpg|gpg --dearmor -o /etc/apt/keyrings/docker.gpg; chmod a+r /etc/apt/keyrings/docker.gpg; echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable">/etc/apt/sources.list.d/docker.list; apt-get update -qq; apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin; systemctl enable --now docker;fi
 command -v docker >/dev/null||die "Docker installation failed."; docker compose version >/dev/null 2>&1||die "Docker Compose plugin is missing."
-install -d -m0750 "$PREFIX"; rsync -a --delete --exclude '.git' --exclude '.env' "$SOURCE_ROOT/" "$PREFIX/"; install -d -m0750 "$PREFIX/config" "$PREFIX/storage/redis" "$PREFIX/storage/caddy" "$PREFIX/database" "$PREFIX/backups" "$PREFIX/logs" "$PREFIX/blueprints" "$PREFIX/agent-releases"
+install -d -m0750 "$PREFIX"; rsync -a --delete --exclude '.git' --exclude '.env' --exclude 'node_modules' --exclude 'dist' --exclude '*.db' --exclude 'storage' --exclude 'database' --exclude 'backups' --exclude 'logs' --exclude 'blueprints' --exclude 'agent-releases' "$SOURCE_ROOT/" "$PREFIX/"; install -d -m0750 "$PREFIX/config" "$PREFIX/backups" "$PREFIX/logs" "$PREFIX/blueprints" "$PREFIX/agent-releases"; install -d -m0777 "$PREFIX/storage/redis" "$PREFIX/storage/caddy" "$PREFIX/database"
 if [[ ! -f "$PREFIX/.env" ]];then PG_PASS=$(openssl rand -hex 32); JWT_SECRET=$(openssl rand -hex 64); REFRESH_SECRET=$(openssl rand -hex 64); ENCRYPTION_KEY=$(openssl rand -base64 32|tr -d '\n'); umask 077; cat >"$PREFIX/.env" <<EOF
 NODE_ENV=production
 PORT=8080
@@ -28,12 +28,12 @@ REFRESH_TOKEN_SECRET=${REFRESH_SECRET}
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 EOF
 chmod 600 "$PREFIX/.env"; info "Generated production configuration and secrets.";fi
-cd "$PREFIX"; COMPOSE_FILE="$PREFIX/deploy/docker-compose.yml"; ln -sfn ../.env "$PREFIX/deploy/.env"; COMPOSE=(docker compose --project-directory "$PREFIX" --file "$COMPOSE_FILE" --env-file "$PREFIX/.env"); "${COMPOSE[@]}" config >/dev/null||die "Compose configuration validation failed."; "${COMPOSE[@]}" up -d --build
+cd "$PREFIX"; COMPOSE_FILE="$PREFIX/deploy/docker-compose.yml"; ln -sfn ../.env "$PREFIX/deploy/.env"; COMPOSE=(docker compose --project-name pocketcloud --file "$COMPOSE_FILE" --env-file "$PREFIX/.env"); "${COMPOSE[@]}" config >/dev/null||die "Compose configuration validation failed."; "${COMPOSE[@]}" up -d --build
 for i in {1..30};do "${COMPOSE[@]}" exec -T database pg_isready -U pocketcloud -d pocketcloud >/dev/null 2>&1&&break; [[ $i -eq 30 ]]&&die "PostgreSQL did not become ready."; sleep 2;done
 "${COMPOSE[@]}" exec -T api npx prisma migrate deploy
 for service in api settings worker scheduler task-engine agent-registry dashboard;do state=$("${COMPOSE[@]}" ps --status running --services|grep -Fx "$service"||true); [[ "$state" == "$service" ]]||die "Service $service is not running.";done
 for i in {1..30};do "${COMPOSE[@]}" exec -T api wget -qO- http://127.0.0.1:8080/health >/dev/null 2>&1&&break; [[ $i -eq 30 ]]&&die "API health check failed."; sleep 2;done
-"${COMPOSE[@]}" exec -T settings wget -qO- http://127.0.0.1:8082/health >/dev/null 2>&1||die "Settings service health check failed."
+for i in {1..30};do "${COMPOSE[@]}" exec -T settings wget -qO- http://127.0.0.1:8082/health >/dev/null 2>&1&&break; [[ $i -eq 30 ]]&&die "Settings service health check failed."; sleep 2;done
 cat <<EOF
 
 ${GREEN}PocketCloud installed successfully.${NC}

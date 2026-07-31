@@ -29,7 +29,7 @@ export function validateSetting(key: string, raw: string): { key: SettingKey; va
 
 export async function listSettings(prisma: PrismaClient) {
   const rows = await prisma.setting.findMany({ orderBy: [{ category: 'asc' }, { key: 'asc' }] });
-  return rows.map((row) => {
+  return rows.map((row: any) => {
     const definition = SETTINGS[row.key as SettingKey];
     if (!definition) return null;
     let value = row.value;
