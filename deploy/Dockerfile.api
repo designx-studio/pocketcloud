@@ -1,21 +1,22 @@
 FROM node:20-alpine AS build
 WORKDIR /app
-COPY package*.json ./
-COPY apps/api/package*.json apps/api/
-COPY packages/blueprint/package*.json packages/blueprint/
-RUN npm ci
+COPY package.json ./
+COPY apps/api/package.json apps/api/
+COPY packages/blueprint/package.json packages/blueprint/
+RUN npm install
 COPY packages/blueprint packages/blueprint
 COPY apps/api apps/api
 RUN npm run build -w apps/api
 
 FROM node:20-alpine
 WORKDIR /app
+ENV NODE_ENV=production
 RUN addgroup -S pocketcloud && adduser -S pocketcloud -G pocketcloud
 COPY --from=build /app/apps/api/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 COPY apps/api/prisma ./prisma
 COPY apps/api/entrypoint.sh ./entrypoint.sh
-RUN chmod +x ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh && chown -R pocketcloud:pocketcloud /app
 USER pocketcloud
 ENTRYPOINT ["./entrypoint.sh"]
 CMD ["node","dist/server.js"]
