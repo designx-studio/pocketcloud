@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # PocketCloud Control Plane Installer
-# Usage: curl -fsSL https://install.pocketcloud.dev | bash
+# Usage from a clone: sudo POCKETCLOUD_DOMAIN=cloud.example.com ./scripts/install.sh
 set -Eeuo pipefail
 
 POCKETCLOUD_DOMAIN="${POCKETCLOUD_DOMAIN:-localhost}"
 PREFIX=/opt/pocketcloud
-REPO_RAW="https://raw.githubusercontent.com/designx-studio/pocketcloud/main"
+SOURCE_ROOT="${POCKETCLOUD_SOURCE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)}"
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info() { echo -e "${GREEN}[INFO]${NC}  $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC}  $*"; }
@@ -16,7 +16,11 @@ die() { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
 source /etc/os-release
 [[ "$ID" == "ubuntu" ]] || die "Unsupported OS: $ID. Ubuntu 22.04+ required."
 [[ "${VERSION_ID%%.*}" -ge 22 ]] || die "Ubuntu $VERSION_ID is too old. Ubuntu 22.04+ required."
+[[ -f "$SOURCE_ROOT/deploy/docker-compose.yml" ]] || die "Missing deploy/docker-compose.yml under $SOURCE_ROOT"
+[[ -f "$SOURCE_ROOT/deploy/Dockerfile.api" ]] || die "Missing deploy/Dockerfile.api under $SOURCE_ROOT"
+[[ -f "$SOURCE_ROOT/package.json" ]] || die "Missing repository package.json under $SOURCE_ROOT"
 info "OS: Ubuntu $VERSION_ID ✔"
+info "Using local repository: $SOURCE_ROOT"
 
 TOTAL_MEM_KB=$(awk '/MemTotal/{print $2}' /proc/meminfo)
 [[ $TOTAL_MEM_KB -ge 1500000 ]] || warn "Low memory: $(( TOTAL_MEM_KB / 1024 )) MB. 2 GB recommended."
@@ -24,7 +28,7 @@ FREE_KB=$(df -k / | awk 'NR==2{print $4}')
 [[ $FREE_KB -ge 15000000 ]] || warn "Low disk space: $(( FREE_KB / 1024 / 1024 )) GB free. 20 GB recommended."
 
 apt-get update -qq
-apt-get install -y -qq ca-certificates curl openssl gnupg lsb-release
+apt-get install -y -qq ca-certificates curl openssl gnupg lsb-release rsync
 if ! command -v docker >/dev/null 2>&1; then
   install -m 0755 -d /etc/apt/keyrings
   curl --fail --proto '=https' --tlsv1.2 https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -35,7 +39,10 @@ if ! command -v docker >/dev/null 2>&1; then
   systemctl enable --now docker
 fi
 
-install -d -m 0750 "$PREFIX" "$PREFIX/config" "$PREFIX/storage/redis" "$PREFIX/storage/caddy" "$PREFIX/database" "$PREFIX/backups" "$PREFIX/logs" "$PREFIX/blueprints" "$PREFIX/agent-releases"
+install -d -m 0750 "$PREFIX"
+# Copy the complete checked-out repository so Compose's build context and Dockerfile paths resolve.
+rsync -a --delete --exclude '.git' --exclude '.env' "$SOURCE_ROOT/" "$PREFIX/"
+install -d -m 0750 "$PREFIX/config" "$PREFIX/storage/redis" "$PREFIX/storage/caddy" "$PREFIX/database" "$PREFIX/backups" "$PREFIX/logs" "$PREFIX/blueprints" "$PREFIX/agent-releases"
 if [[ ! -f "$PREFIX/.env" ]]; then
   PG_PASS=$(openssl rand -hex 32)
   JWT_SECRET=$(openssl rand -hex 64)
@@ -56,8 +63,6 @@ EOF
   chmod 600 "$PREFIX/.env"
 fi
 
-curl --fail --proto '=https' --tlsv1.2 "$REPO_RAW/deploy/docker-compose.yml" -o "$PREFIX/docker-compose.yml"
-curl --fail --proto '=https' --tlsv1.2 "$REPO_RAW/deploy/Caddyfile" -o "$PREFIX/Caddyfile"
 cd "$PREFIX"
 docker compose --env-file .env up -d --build
 
