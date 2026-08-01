@@ -110,6 +110,8 @@ const schema = z.object({
   REFRESH_TOKEN_SECRET: z.string().min(32),
   ENCRYPTION_KEY: z.string().min(16),
   CORS_ORIGIN: z.string().default('*'),
+  ENABLE_API_DOCS: z.enum(['true', 'false']).optional(),
+  ENABLE_DEMO_MODE: z.enum(['true', 'false']).optional(),
   APP_URL: z.string().optional(),
   API_URL: z.string().optional(),
   WS_URL: z.string().optional(),

@@ -49,7 +49,14 @@ WS_URL=ws://localhost:8080
 CORS_ORIGIN=*
 ```
 
-Wildcard CORS is allowed only when `NODE_ENV=development` (or `test`).
+Wildcard CORS is allowed only when `NODE_ENV=development` (or `test`). Outside the wildcard case, `CORS_ORIGIN` is a comma-separated allowlist of exact browser origins.
+
+### Optional public surfaces
+
+| Variable | Default (dev) | Default (production) | Effect |
+|---|---|---|---|
+| `ENABLE_API_DOCS` | `true` | `false` | Serves Swagger UI and the OpenAPI document at `/docs` |
+| `ENABLE_DEMO_MODE` | `true` | `false` | Serves `POST /api/v1/auth/demo`, which issues a read-only session to anyone and seeds sample data |
 
 ## Validation failures
 

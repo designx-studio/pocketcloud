@@ -35,11 +35,14 @@ if ! curl --fail --silent --show-error --proto '=http,https' --tlsv1.2 "$CONTROL
   curl --fail --silent --show-error --proto '=https' --tlsv1.2 "$RELEASE_URL" -o "$BINARY"
 fi
 chmod 0750 "$BINARY"
+# Written before chown so the token is never briefly world-readable.
+umask 077
 cat >/etc/pocketcloud/config.env <<EOF
 CONTROL_PLANE=$CONTROL_PLANE
 BOOTSTRAP_TOKEN=$TOKEN
 EOF
-chmod 0640 /etc/pocketcloud/config.env
+chmod 0600 /etc/pocketcloud/config.env
+umask 022
 chown -R pocketcloud-agent:pocketcloud-agent /opt/pocketcloud-agent /etc/pocketcloud /var/lib/pocketcloud-agent
 cat >/etc/systemd/system/pocketcloud-agent.service <<EOF
 [Unit]
@@ -49,7 +52,9 @@ Wants=network-online.target
 [Service]
 User=pocketcloud-agent
 EnvironmentFile=/etc/pocketcloud/config.env
-ExecStart=$BINARY --control-plane ${CONTROL_PLANE} --token ${TOKEN}
+# Credentials come from the 0600 EnvironmentFile: unit files are world-readable
+# and command lines are visible in the process table.
+ExecStart=$BINARY
 Restart=always
 RestartSec=5
 NoNewPrivileges=true
