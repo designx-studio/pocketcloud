@@ -17,6 +17,7 @@ ENV_FILE="${INSTALL_DIR}/.env"
 COMPOSE_FILE="deploy/docker-compose.yml"
 
 log() { printf '\n[pocketcloud] %s\n' "$*"; }
+log_error() { printf '\n[pocketcloud] ERROR: %s\n' "$*" >&2; }
 fail() { printf '\n[pocketcloud] ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$EUID" -eq 0 ]] || fail "Run as root: curl -fsSL <installer-url> | sudo bash"
@@ -251,26 +252,27 @@ prompt_domain() {
     read -r -p "" domain </dev/tty || true
   fi
   if [[ -z "$domain" ]]; then
-    log "Detecting public IP address..."
+    log_error "Detecting public IP address..."
     domain="$(curl -4fsSL --max-time 10 https://api.ipify.org 2>/dev/null || true)"
   fi
   # Fallback to local IP detection if ipify fails
   if [[ -z "$domain" ]]; then
-    log "ipify failed, using local IP detection..."
+    log_error "ipify failed, using local IP detection..."
     domain="$(hostname -I 2>/dev/null | awk '{print $1}' || ip route get 1 2>/dev/null | awk '{print $7}' || true)"
   fi
   # Final fallback to localhost
   if [[ -z "$domain" ]]; then
-    log "IP detection failed, using localhost..."
+    log_error "IP detection failed, using localhost..."
     domain="localhost"
   fi
+  # Clean up the domain value - remove whitespace and trailing slash
   domain="${domain#"${domain%%[![:space:]]*}"}"
   domain="${domain%"${domain##*[![:space:]]}"}"
   domain="${domain%/}"
   # Strip scheme if the operator pasted a full URL into POCKETCLOUD_DOMAIN
   # so derive_app_url can re-apply https consistently when bare host given.
   [[ -n "$domain" ]] || fail "Could not determine the public host. Set POCKETCLOUD_DOMAIN=cloud.example.com and retry."
-  log "Using domain: $domain"
+  log_error "Using domain: $domain"
   printf '%s' "$domain"
 }
 
@@ -278,8 +280,15 @@ generate_env() {
   local public_host app_url api_url ws_url cors_origin
   local db_password jwt_secret refresh_secret encryption_key
 
-  public_host="$(prompt_domain)"
-  app_url="$(derive_app_url "$public_host")"
+  # Respect existing APP_URL if set
+  if [[ -n "${APP_URL:-}" ]]; then
+    app_url="$APP_URL"
+    log "Using provided APP_URL: $app_url"
+  else
+    public_host="$(prompt_domain)"
+    app_url="$(derive_app_url "$public_host")"
+  fi
+  
   # Host portion for Caddy / POCKETCLOUD_DOMAIN (no scheme)
   local domain_only="${app_url#https://}"
   domain_only="${domain_only#http://}"
@@ -326,6 +335,7 @@ EOF
   # Docker Compose resolves env_file relative to the compose file directory.
   ln -sfn ../.env "$INSTALL_DIR/deploy/.env"
 
+  # Validate the generated configuration before proceeding
   validate_env_file "$ENV_FILE"
 
   echo "APP_URL:"
