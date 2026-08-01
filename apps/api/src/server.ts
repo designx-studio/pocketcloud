@@ -369,7 +369,7 @@ app.post('/api/v1/servers', async (req, reply) => {
   return reply.code(201).send({
     server,
     bootstrapToken: rawToken,
-    installCommand: `curl -fsSL ${scheme}://${host}/install-agent.sh | bash -s -- --token ${rawToken}`
+    installCommand: `curl -fsSL ${scheme}://${host}/install-agent.sh | bash -s -- --token ${rawToken} --control-plane ${scheme}://${host}`
   });
 });
 
@@ -396,7 +396,7 @@ app.post('/api/v1/servers/:id/bootstrap-token', async (req, reply) => {
   const isIPOrLocalhost = hostPart === 'localhost' || /^[0-9.]+$/.test(hostPart);
   const scheme = isIPOrLocalhost ? 'http' : 'https';
 
-  const installCommand = `curl -fsSL ${scheme}://${host}/install-agent.sh | bash -s -- --token ${rawToken}`;
+  const installCommand = `curl -fsSL ${scheme}://${host}/install-agent.sh | bash -s -- --token ${rawToken} --control-plane ${scheme}://${host}`;
 
   return {
     bootstrapToken: rawToken,
