@@ -1,4 +1,4 @@
-{$POCKETCLOUD_DOMAIN:localhost} {
+:80 {
   encode gzip zstd
 
   @agent-releases path /api/v1/agent/releases/* /api/v1/agent/releases
