@@ -10,7 +10,8 @@ export function toJsonField(value: unknown): unknown {
   if (process.env.DATABASE_URL?.startsWith('file:')) {
     return typeof value === 'string' ? value : JSON.stringify(value ?? {});
   }
-  return value;
+  // For PostgreSQL, pass through non-null values, but convert null/undefined to {}
+  return value ?? {};
 }
 
 /** Deserialize a JSON field from SQLite string, or pass through for PostgreSQL */

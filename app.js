@@ -108,6 +108,8 @@ function bindEvents(){
       if ($('txtAgentInstallCmd')) $('txtAgentInstallCmd').textContent = res.installCommand;
       $('boxAgentInstallCmd')?.classList.remove('hidden');
       toast('Server node registered!', 'success');
+      // Refresh server list to show the new node
+      await loadServers();
     } catch (err) {
       toast(err.message, 'error');
     } finally {

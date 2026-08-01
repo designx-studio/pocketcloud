@@ -51,7 +51,7 @@ Generated during installation via `openssl rand`:
 | `ENCRYPTION_KEY` | 256 bits | AES key for at-rest encryption |
 | `POSTGRES_PASSWORD` | 256 bits | Database password |
 
-**Never commit `.env` to version control.** The `.env.example` file contains placeholder values only.
+**Never commit `.env` to version control.** The `.env.example` file contains placeholder values only. Production secrets live only at `/opt/pocketcloud/.env`.
 
 ### Blueprint Secret Redaction
 

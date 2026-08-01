@@ -316,13 +316,22 @@ app.get('/api/v1/auth/me', async (req) => {
 
 // SERVER NODES MANAGEMENT
 app.get('/api/v1/servers', async () => {
-  return prisma.server.findMany({
+  const servers = await prisma.server.findMany({
     include: {
       agent: true,
       metrics: { orderBy: { collectedAt: 'desc' }, take: 1 }
     },
     orderBy: { createdAt: 'desc' }
   });
+  
+  // Convert BigInt fields to Number for JSON serialization
+  return servers.map((server: any) => ({
+    ...server,
+    metrics: server.metrics.map((m: any) => ({
+      ...m,
+      uptime: m.uptime ? Number(m.uptime) : null
+    }))
+  }));
 });
 
 app.post('/api/v1/servers', async (req, reply) => {
@@ -578,7 +587,7 @@ app.post('/api/v1/agent/heartbeat', async (req, reply) => {
       data: { status: 'ONLINE' }
     }),
     prisma.heartbeat.create({
-      data: { serverId: agent.serverId, payload: JSON.stringify(payload) }
+      data: { serverId: agent.serverId, payload: toJsonField(payload) as any }
     }),
     ...(payload.cpu !== undefined && payload.memory !== undefined && payload.disk !== undefined
       ? [
@@ -626,15 +635,24 @@ app.get('/api/v1/agent/tasks/pending', async (req, reply) => {
     take: 5
   });
 
-  return tasks;
+  // Ensure payload is properly deserialized for both SQLite and PostgreSQL
+  return tasks.map(task => ({
+    ...task,
+    payload: fromJsonField(task.payload)
+  }));
 });
 
 // TASK ENGINE ENDPOINTS
 app.get('/api/v1/tasks', async () => {
-  return prisma.task.findMany({
+  const tasks = await prisma.task.findMany({
     include: { server: true, logs: true },
     orderBy: { createdAt: 'desc' }
   });
+  // Ensure payload is properly deserialized for both SQLite and PostgreSQL
+  return tasks.map(task => ({
+    ...task,
+    payload: fromJsonField(task.payload)
+  }));
 });
 
 app.post('/api/v1/tasks', async (req, reply) => {
@@ -683,7 +701,11 @@ app.post('/api/v1/tasks', async (req, reply) => {
     }
   });
 
-  return reply.code(202).send(task);
+  // Ensure payload is properly deserialized for both SQLite and PostgreSQL
+  return reply.code(202).send({
+    ...task,
+    payload: fromJsonField(task.payload)
+  });
 });
 
 app.get('/api/v1/tasks/:id', async (req, reply) => {
@@ -694,7 +716,11 @@ app.get('/api/v1/tasks/:id', async (req, reply) => {
   });
 
   if (!task) return reply.code(404).send({ error: 'task_not_found' });
-  return task;
+  // Ensure payload is properly deserialized for both SQLite and PostgreSQL
+  return {
+    ...task,
+    payload: fromJsonField(task.payload)
+  };
 });
 
 app.post('/api/v1/tasks/:id/logs', async (req, reply) => {
@@ -755,7 +781,11 @@ app.post('/api/v1/tasks/:id/complete', async (req, reply) => {
     }
   });
 
-  return reply.code(200).send(task);
+  // Ensure payload is properly deserialized for both SQLite and PostgreSQL
+  return reply.code(200).send({
+    ...task,
+    payload: fromJsonField(task.payload)
+  });
 });
 
 // BLUEPRINTS ENGINE ENDPOINTS

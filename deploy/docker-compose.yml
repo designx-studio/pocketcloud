@@ -14,53 +14,61 @@ services:
     command: [redis-server, --appendonly, yes]
     volumes: [../storage/redis:/data]
     healthcheck: { test: [CMD, redis-cli, ping], interval: 10s, timeout: 3s, retries: 5 }
+  # env_file paths are relative to this compose file (deploy/).
+  # Canonical secrets live at /opt/pocketcloud/.env (repo root .env in local/dev).
   api:
     build: { context: .., dockerfile: deploy/Dockerfile.api }
     restart: unless-stopped
-    env_file: .env
+    env_file: ../.env
     depends_on: { database: { condition: service_healthy }, redis: { condition: service_healthy } }
     healthcheck: { test: [CMD-SHELL, 'wget -qO- http://127.0.0.1:8080/health || exit 1'], interval: 10s, timeout: 5s, retries: 10, start_period: 30s }
   settings:
     build: { context: .., dockerfile: deploy/Dockerfile.api }
     restart: unless-stopped
     command: [node, dist/settings-server.js]
-    env_file: .env
+    env_file: ../.env
     depends_on: { api: { condition: service_healthy } }
     healthcheck: { test: [CMD-SHELL, 'wget -qO- http://127.0.0.1:8082/health || exit 1'], interval: 10s, timeout: 5s, retries: 10 }
   worker:
     build: { context: .., dockerfile: deploy/Dockerfile.api }
     restart: unless-stopped
     command: [node, dist/worker.js]
-    env_file: .env
+    env_file: ../.env
     depends_on: { api: { condition: service_healthy } }
+    healthcheck: { test: [CMD-SHELL, 'node -e "process.exit(0)"'], interval: 30s, timeout: 10s, retries: 3, start_period: 10s }
   scheduler:
     build: { context: .., dockerfile: deploy/Dockerfile.api }
     restart: unless-stopped
     command: [node, dist/scheduler.js]
-    env_file: .env
+    env_file: ../.env
     depends_on: { api: { condition: service_healthy } }
+    healthcheck: { test: [CMD-SHELL, 'node -e "process.exit(0)"'], interval: 30s, timeout: 10s, retries: 3, start_period: 10s }
   task-engine:
     build: { context: .., dockerfile: deploy/Dockerfile.api }
     restart: unless-stopped
     command: [node, dist/task-engine.js]
-    env_file: .env
+    env_file: ../.env
     depends_on: { api: { condition: service_healthy } }
+    healthcheck: { test: [CMD-SHELL, 'node -e "process.exit(0)"'], interval: 30s, timeout: 10s, retries: 3, start_period: 10s }
   agent-registry:
     build: { context: .., dockerfile: deploy/Dockerfile.api }
     restart: unless-stopped
     command: [node, dist/agent-registry.js]
-    env_file: .env
+    env_file: ../.env
     volumes: [../agent-releases:/opt/pocketcloud/agent-releases:ro]
     depends_on: { api: { condition: service_healthy } }
+    healthcheck: { test: [CMD-SHELL, 'wget -qO- http://127.0.0.1:8081/api/v1/agent/releases || exit 1'], interval: 30s, timeout: 10s, retries: 3, start_period: 10s }
   dashboard:
     image: nginx:alpine
     restart: unless-stopped
     volumes: [../index.html:/usr/share/nginx/html/index.html:ro, ../app.js:/usr/share/nginx/html/app.js:ro, ../styles.css:/usr/share/nginx/html/styles.css:ro, ../agent/install-agent.sh:/usr/share/nginx/html/install-agent.sh:ro]
     depends_on: { api: { condition: service_healthy } }
+    healthcheck: { test: [CMD-SHELL, 'wget --spider -q http://localhost/ || exit 1'], interval: 30s, timeout: 10s, retries: 3, start_period: 5s }
   caddy:
     image: caddy:2.8-alpine
     restart: unless-stopped
-    env_file: .env
+    env_file: ../.env
     ports: ['80:80', '443:443']
     volumes: [./Caddyfile:/etc/caddy/Caddyfile:ro, ../storage/caddy:/data, ../storage/caddy-config:/config]
-    depends_on: [dashboard, api, settings]
+    depends_on: { dashboard: { condition: service_healthy }, api: { condition: service_healthy }, settings: { condition: service_healthy } }
+    healthcheck: { test: [CMD-SHELL, 'pgrep caddy || exit 1'], interval: 30s, timeout: 10s, retries: 3, start_period: 10s }

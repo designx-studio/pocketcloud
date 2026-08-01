@@ -12,7 +12,6 @@ RUN npm run build -w apps/api
 FROM node:20-alpine
 RUN apk add --no-cache openssl
 WORKDIR /app
-ENV NODE_ENV=production
 RUN addgroup -S pocketcloud && adduser -S pocketcloud -G pocketcloud
 COPY --from=build /app/apps/api/dist ./dist
 COPY --from=build /app/node_modules ./node_modules

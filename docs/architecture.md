@@ -102,7 +102,7 @@
 - Agent credentials: SHA-256 hashed before storage
 - Bootstrap tokens: single-use, 1-hour TTL
 - Rate limiting: 300 req/min per IP
-- CORS: configurable via `CORS_ORIGIN` env
+- CORS: configurable via `CORS_ORIGIN` env (`*` allowed only in development; production requires an explicit `https://` origin written to `/opt/pocketcloud/.env`)
 - Helmet.js: security headers on all responses
 - Agent: unprivileged systemd service with `NoNewPrivileges=true`
 

@@ -8,9 +8,47 @@ The dashboard shows real data only — there are no demo/mock servers.
 
 **Steps:**
 1. Make sure the API server is running (`npm run dev` in `apps/api/`)
-2. Verify CORS is configured: `CORS_ORIGIN=*` in `.env` (for local dev)
+2. Verify CORS is configured for your environment:
+   - Development: `CORS_ORIGIN=*` in the repo-root `.env`
+   - Production: `CORS_ORIGIN=https://your-domain` in `/opt/pocketcloud/.env` (never `*`)
 3. Check browser console for network errors
 4. Try registering an account first (the login modal has a Register toggle)
+
+---
+
+### API container exits immediately / unhealthy after install
+
+**Symptom:** `docker compose ps` shows `api` as `Exit` or `unhealthy`; dependents never start.
+
+**Common cause:** invalid production configuration — especially `CORS_ORIGIN=*`.
+
+**Fix:**
+1. Inspect logs: `docker compose -f /opt/pocketcloud/deploy/docker-compose.yml logs api`
+2. Look for:
+   ```text
+   PocketCloud failed to start.
+   Configuration validation failed.
+   CORS_ORIGIN cannot be '*' in production.
+   ```
+3. Edit the **canonical** env file (not a second copy):
+   ```bash
+   nano /opt/pocketcloud/.env
+   ```
+4. Set explicit HTTPS origins derived from your domain:
+   ```env
+   NODE_ENV=production
+   APP_URL=https://cloud.example.com
+   API_URL=https://cloud.example.com/api
+   WS_URL=wss://cloud.example.com/ws
+   CORS_ORIGIN=https://cloud.example.com
+   ```
+5. Recreate services:
+   ```bash
+   docker compose -f /opt/pocketcloud/deploy/docker-compose.yml \
+     --env-file /opt/pocketcloud/.env up -d
+   ```
+
+The installer now generates these values automatically from `POCKETCLOUD_DOMAIN` and validates them before Docker starts.
 
 ---
 
@@ -181,17 +219,22 @@ npx prisma generate
 
 ### View all component logs in production
 
+Always use the canonical env file at `/opt/pocketcloud/.env`:
+
 ```bash
+cd /opt/pocketcloud
+COMPOSE="docker compose -f deploy/docker-compose.yml --env-file /opt/pocketcloud/.env"
+
 # All services
-docker compose logs -f
+$COMPOSE logs -f
 
 # Specific service
-docker compose logs -f api
-docker compose logs -f worker
-docker compose logs -f scheduler
+$COMPOSE logs -f api
+$COMPOSE logs -f worker
+$COMPOSE logs -f scheduler
 
 # Database
-docker compose exec database psql -U pocketcloud pocketcloud -c "SELECT * FROM \"Task\" ORDER BY \"createdAt\" DESC LIMIT 10;"
+$COMPOSE exec database psql -U pocketcloud pocketcloud -c "SELECT * FROM \"Task\" ORDER BY \"createdAt\" DESC LIMIT 10;"
 ```
 
 ### Run AI Log Diagnostics

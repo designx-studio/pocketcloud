@@ -79,7 +79,7 @@ model Task {
   serverId    String
   server      Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
   type        String
-  payload     String    @default("{}")
+  payload     String    @default("{}") // SQLite doesn't support Json type - stored as string, app handles JSON serialization
   status      String    @default("QUEUED")
   requestedBy String
   createdAt   DateTime  @default(now())
@@ -138,7 +138,7 @@ model Heartbeat {
   id         String   @id @default(uuid())
   serverId   String
   server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  payload    String   @default("{}")
+  payload    String   @default("{}") // SQLite doesn't support Json type - stored as string, app handles JSON serialization
   receivedAt DateTime @default(now())
 
   @@index([serverId, receivedAt])
