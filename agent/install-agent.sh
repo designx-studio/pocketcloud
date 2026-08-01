@@ -12,6 +12,13 @@ done
 [[ $EUID -eq 0 ]] || { echo "run as root" >&2; exit 1; }
 [[ -n "$CONTROL_PLANE" && -n "$TOKEN" ]] || { echo "control plane and token required" >&2; exit 1; }
 command -v curl >/dev/null || { apt-get update -y && apt-get install -y curl; }
+
+# Stop any existing agent service before writing the binary to avoid
+# curl error 23 (write failure) when the old binary is still open/running.
+if systemctl is-active --quiet pocketcloud-agent 2>/dev/null; then
+  systemctl stop pocketcloud-agent
+fi
+
 install -d -m 0750 /opt/pocketcloud-agent /etc/pocketcloud /var/lib/pocketcloud-agent
 id pocketcloud-agent >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin pocketcloud-agent
 
