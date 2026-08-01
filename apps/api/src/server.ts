@@ -27,20 +27,6 @@ const refreshCookieOptions = (req: any) => ({
   path: '/api/v1/auth'
 });
 
-// Keep IP-only HTTP deployments usable while retaining Secure cookies behind HTTPS.
-const isSecureRequest = (req: any) => {
-  const forwardedProto = req.headers['x-forwarded-proto'];
-  return config.NODE_ENV === 'production'
-    ? forwardedProto === 'https' || req.protocol === 'https'
-    : forwardedProto === 'https' || req.protocol === 'https';
-};
-const refreshCookieOptions = (req: any) => ({
-  httpOnly: true,
-  secure: isSecureRequest(req),
-  sameSite: 'lax' as const,
-  path: '/api/v1/auth'
-});
-
 await app.register(helmet);
 await app.register(cookie);
 await app.register(cors, {
