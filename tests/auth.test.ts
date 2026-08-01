@@ -24,6 +24,10 @@ describe('Security & Authentication Module', () => {
     expect(decoded.role).toBe(role);
   });
 
+  it('fails verification for a malformed stored hash instead of throwing', async () => {
+    await expect(verifyPassword('not-an-argon2-hash', 'AnyPassword')).resolves.toBe(false);
+  });
+
   it('generates random tokens and sha256 hashes', () => {
     const raw = randomToken();
     expect(raw).toBeDefined();

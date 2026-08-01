@@ -15,6 +15,22 @@ import { toJsonField, fromJsonField, isSQLite } from './db-compat.js';
 const prisma = new PrismaClient();
 const app = Fastify({ logger: true, bodyLimit: 2 * 1024 * 1024 });
 
+/** Translate Prisma failures into meaningful HTTP responses instead of opaque 500s. */
+function mapPrismaError(error: unknown): { status: number; body: Record<string, unknown> } | null {
+  const code = (error as { code?: string }).code;
+  if (typeof code !== 'string' || !/^P\d{4}$/.test(code)) return null;
+  switch (code) {
+    case 'P2025':
+      return { status: 404, body: { error: 'not_found', message: 'The requested record does not exist.' } };
+    case 'P2002':
+      return { status: 409, body: { error: 'conflict', message: 'A record with these unique values already exists.' } };
+    case 'P2003':
+      return { status: 400, body: { error: 'invalid_reference', message: 'A referenced record does not exist.' } };
+    default:
+      return null;
+  }
+}
+
 // Keep IP-only HTTP deployments usable while retaining Secure cookies behind HTTPS.
 const isSecureRequest = (req: any) => {
   const forwardedProto = req.headers['x-forwarded-proto'];
@@ -292,10 +308,10 @@ app.addHook('preHandler', async (req, reply) => {
       });
     }
   } catch (err) {
+    req.log.debug({ err }, 'access token verification failed');
     if (isTaskActionRoute) {
-      const tokenHash = hashToken(tokenStr);
       const agent = await prisma.agent.findUnique({
-        where: { credentialHash: tokenHash },
+        where: { credentialHash: hashToken(tokenStr) },
         include: { server: true }
       });
       if (agent) {
@@ -307,10 +323,10 @@ app.addHook('preHandler', async (req, reply) => {
   }
 });
 
-app.get('/api/v1/auth/me', async (req) => {
+app.get('/api/v1/auth/me', async (req, reply) => {
   const auth = (req as any).auth;
   const user = await prisma.user.findUnique({ where: { id: auth.userId } });
-  if (!user) throw new Error('user_not_found');
+  if (!user) return reply.code(401).send({ error: 'user_not_found' });
   return { id: user.id, email: user.email, role: user.role };
 });
 
@@ -979,6 +995,7 @@ app.post('/api/v1/backups/import', async (req, reply) => {
 
   let importedServers = 0;
   let importedBlueprints = 0;
+  const failures: Array<{ kind: 'server' | 'blueprint'; name: string; reason: string }> = [];
 
   // Upsert servers — if id exists try update, otherwise create
   for (const s of body.servers) {
@@ -995,13 +1012,20 @@ app.post('/api/v1/backups/import', async (req, reply) => {
         });
       }
       importedServers++;
-    } catch { /* skip duplicates */ }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      req.log.warn({ err, server: s.name }, 'backup import skipped a server');
+      failures.push({ kind: 'server', name: s.name, reason });
+    }
   }
 
   // Import blueprints (require a valid serverId or skip)
   for (const b of body.blueprints) {
     const targetServerId = b.serverId || (await prisma.server.findFirst({ select: { id: true } }))?.id;
-    if (!targetServerId) continue;
+    if (!targetServerId) {
+      failures.push({ kind: 'blueprint', name: b.name, reason: 'no_target_server' });
+      continue;
+    }
     try {
       await prisma.blueprint.create({
         data: {
@@ -1017,7 +1041,11 @@ app.post('/api/v1/backups/import', async (req, reply) => {
         }
       });
       importedBlueprints++;
-    } catch { /* skip duplicates */ }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      req.log.warn({ err, blueprint: b.name }, 'backup import skipped a blueprint');
+      failures.push({ kind: 'blueprint', name: b.name, reason });
+    }
   }
 
   const auth = (req as any).auth;
@@ -1027,24 +1055,48 @@ app.post('/api/v1/backups/import', async (req, reply) => {
       action: 'backup_import',
       resource: 'Backup',
       ipAddress: req.ip,
-      metadata: JSON.stringify({ importedServers, importedBlueprints })
+      metadata: JSON.stringify({ importedServers, importedBlueprints, skipped: failures.length })
     }
   });
 
-  return reply.code(200).send({
-    ok: true,
+  return reply.code(failures.length ? 207 : 200).send({
+    ok: failures.length === 0,
     importedServers,
     importedBlueprints,
+    skipped: failures,
     timestamp: new Date().toISOString()
   });
 });
 
 app.setErrorHandler((error, req, reply) => {
-  req.log.error(error);
   if (error instanceof z.ZodError) {
+    req.log.info({ err: error }, 'request failed validation');
     return reply.code(400).send({ error: 'validation_error', details: error.issues });
   }
-  return reply.code(500).send({ error: 'internal_error', message: error.message });
+
+  const mapped = mapPrismaError(error);
+  if (mapped) {
+    req.log.warn({ err: error }, 'database rejected the request');
+    return reply.code(mapped.status).send(mapped.body);
+  }
+
+  // Client errors raised by Fastify itself (rate limit, body limit, bad JSON…)
+  // carry their own status and must not be reported as internal failures.
+  const statusCode = typeof error.statusCode === 'number' ? error.statusCode : 500;
+  if (statusCode < 500) {
+    req.log.info({ err: error }, 'request rejected');
+    return reply.code(statusCode).send({ error: error.code || 'request_error', message: error.message });
+  }
+
+  req.log.error({ err: error }, 'unhandled error while processing request');
+  return reply.code(statusCode).send({
+    error: 'internal_error',
+    message: config.NODE_ENV === 'production' ? 'An unexpected error occurred.' : error.message
+  });
+});
+
+process.on('unhandledRejection', (reason) => {
+  app.log.error({ err: reason }, 'unhandled promise rejection');
 });
 
 app.listen({ port: config.PORT, host: '0.0.0.0' }).catch((err) => {

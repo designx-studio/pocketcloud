@@ -68,10 +68,22 @@ app.get<{ Params: { platform: string } }>('/api/v1/agent/releases/:platform', as
   app.log.info(`Local binary not found for ${req.params.platform}, proxying from GitHub: ${githubUrl}`);
 
   return new Promise<void>((resolve) => {
+    const failRequest = (message: string) => {
+      app.log.error(`GitHub proxy error: ${message}`);
+      if (reply.raw.headersSent || reply.raw.writableEnded) {
+        // The download already started; abort it so the client sees a truncated
+        // transfer instead of silently receiving a partial binary.
+        reply.raw.destroy(new Error(message));
+      } else {
+        reply.code(502).send({ error: 'github_release_failed', message });
+      }
+      resolve();
+    };
+
     https.get(githubUrl, (githubRes: any) => {
       if (githubRes.statusCode !== 200) {
-        reply.code(502).send({ error: 'github_release_failed', message: `GitHub returned ${githubRes.statusCode}` });
-        resolve();
+        githubRes.resume();
+        failRequest(`GitHub returned ${githubRes.statusCode}`);
         return;
       }
 
@@ -85,21 +97,13 @@ app.get<{ Params: { platform: string } }>('/api/v1/agent/releases/:platform', as
 
       githubRes.pipe(reply.raw);
       githubRes.on('end', resolve);
-      githubRes.on('error', (err: Error) => {
-        app.log.error(`GitHub proxy error: ${err.message}`);
-        if (!reply.sent) {
-          reply.code(502).send({ error: 'github_release_failed', message: err.message });
-        }
-        resolve();
-      });
-    }).on('error', (err: Error) => {
-      app.log.error(`GitHub proxy error: ${err.message}`);
-      if (!reply.sent) {
-        reply.code(502).send({ error: 'github_release_failed', message: err.message });
-      }
-      resolve();
-    });
+      githubRes.on('error', (err: Error) => failRequest(err.message));
+    }).on('error', (err: Error) => failRequest(err.message));
   });
+});
+
+process.on('unhandledRejection', (reason) => {
+  app.log.error({ err: reason }, 'unhandled promise rejection');
 });
 
 app.listen({ port: 8081, host: '0.0.0.0' }).catch((err) => {

@@ -97,7 +97,7 @@ async function runJob(job: typeof JOBS[0]): Promise<void> {
   try {
     await job.fn();
   } catch (err) {
-    console.error(`[scheduler/${job.name}] Error:`, err instanceof Error ? err.message : err);
+    console.error(`[scheduler/${job.name}] Error:`, err instanceof Error ? err.stack ?? err.message : err);
   }
 }
 
@@ -115,6 +115,10 @@ async function main(): Promise<void> {
     console.log(`[scheduler] Registered job '${job.name}' every ${job.intervalMs / 1000}s`);
   }
 }
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[scheduler] Unhandled promise rejection:', reason);
+});
 
 main().catch((err) => {
   console.error('[scheduler] Fatal error:', err);

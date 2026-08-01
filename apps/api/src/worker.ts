@@ -25,7 +25,10 @@ async function processTask(taskId: string): Promise<void> {
     await prisma.task.update({
       where: { id: taskId },
       data: { status: 'FAILED', finishedAt: new Date(), logs: { create: { level: 'ERROR', message: `Worker dispatch error: ${message}` } } }
-    }).catch(() => undefined);
+    }).catch((updateErr: unknown) => {
+      // The task stays QUEUED and will be retried on the next poll; surface why.
+      console.error(`[worker] Could not mark task ${taskId} as FAILED:`, updateErr instanceof Error ? updateErr.message : updateErr);
+    });
   } finally {
     activeTasks--;
   }
@@ -47,4 +50,7 @@ async function main(): Promise<void> {
   await pollQueue();
   setInterval(() => pollQueue().catch((err) => console.error('[worker] poll error', err)), POLL_INTERVAL_MS);
 }
+process.on('unhandledRejection', (reason) => {
+  console.error('[worker] Unhandled promise rejection:', reason);
+});
 main().catch((err) => { console.error('[worker] Fatal error:', err); process.exit(1); });

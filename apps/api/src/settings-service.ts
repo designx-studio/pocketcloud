@@ -33,8 +33,19 @@ export async function listSettings(prisma: PrismaClient) {
     const definition = SETTINGS[row.key as SettingKey];
     if (!definition) return null;
     let value = row.value;
-    if (row.isSecret) value = mask(decryptSecret(row.value));
-    return { key: row.key, category: row.category, value, isSecret: row.isSecret, description: definition.description, updatedAt: row.updatedAt, updatedBy: row.updatedBy };
+    let decryptionFailed = false;
+    if (row.isSecret) {
+      try {
+        value = mask(decryptSecret(row.value));
+      } catch (err) {
+        // One unreadable secret must not take down the whole settings page,
+        // but the operator has to know the stored value cannot be decrypted.
+        console.error(`[settings] Unable to decrypt secret '${row.key}':`, err instanceof Error ? err.message : err);
+        value = '';
+        decryptionFailed = true;
+      }
+    }
+    return { key: row.key, category: row.category, value, isSecret: row.isSecret, decryptionFailed, description: definition.description, updatedAt: row.updatedAt, updatedBy: row.updatedBy };
   }).filter(Boolean);
 }
 
