@@ -8,8 +8,10 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { failTask, scheduleInterval, serviceLogger, startService } from './service-runtime.js';
 
 const prisma = new PrismaClient();
+const log = serviceLogger('task-engine');
 
 const RECONCILE_INTERVAL_MS = 10_000;
 const TASK_TIMEOUT_MS = 600_000; // 10 minutes
@@ -27,20 +29,12 @@ async function reconcileStuckTasks(): Promise<void> {
   });
 
   for (const task of stuck) {
-    console.log(`[task-engine] Task ${task.id} (${task.type}) timed out after ${TASK_TIMEOUT_MS / 60000} min. Marking FAILED.`);
-    await prisma.task.update({
-      where: { id: task.id },
-      data: {
-        status: 'FAILED',
-        finishedAt: new Date(),
-        logs: {
-          create: {
-            level: 'ERROR',
-            message: `Task timed out after ${TASK_TIMEOUT_MS / 60000} minutes without agent acknowledgement. Check agent connectivity.`
-          }
-        }
-      }
-    });
+    log.info(`Task ${task.id} (${task.type}) timed out after ${TASK_TIMEOUT_MS / 60000} min. Marking FAILED.`);
+    await failTask(
+      prisma,
+      task.id,
+      `Task timed out after ${TASK_TIMEOUT_MS / 60000} minutes without agent acknowledgement. Check agent connectivity.`
+    );
   }
 }
 
@@ -55,38 +49,22 @@ async function reconcileOfflineAgentTasks(): Promise<void> {
   });
 
   for (const task of affected) {
-    console.log(`[task-engine] Server '${task.server.name}' is OFFLINE. Failing task ${task.id} (${task.type}).`);
-    await prisma.task.update({
-      where: { id: task.id },
-      data: {
-        status: 'FAILED',
-        finishedAt: new Date(),
-        logs: {
-          create: {
-            level: 'ERROR',
-            message: `Task failed: target server went OFFLINE before task could be executed.`
-          }
-        }
-      }
-    });
+    log.info(`Server '${task.server.name}' is OFFLINE. Failing task ${task.id} (${task.type}).`);
+    await failTask(prisma, task.id, 'Task failed: target server went OFFLINE before task could be executed.');
   }
 }
 
-async function main(): Promise<void> {
-  console.log('[task-engine] PocketCloud Task Engine started.');
-  console.log(`[task-engine] Task timeout: ${TASK_TIMEOUT_MS / 60000}min, Reconcile interval: ${RECONCILE_INTERVAL_MS / 1000}s`);
-
-  // Run immediately
-  await reconcileStuckTasks().catch(console.error);
-  await reconcileOfflineAgentTasks().catch(console.error);
-
-  setInterval(async () => {
-    await reconcileStuckTasks().catch(console.error);
-    await reconcileOfflineAgentTasks().catch(console.error);
-  }, RECONCILE_INTERVAL_MS);
+async function reconcile(): Promise<void> {
+  await reconcileStuckTasks();
+  await reconcileOfflineAgentTasks();
 }
 
-main().catch((err) => {
-  console.error('[task-engine] Fatal error:', err);
-  process.exit(1);
+startService('task-engine', async () => {
+  log.info('PocketCloud Task Engine started.');
+  log.info(`Task timeout: ${TASK_TIMEOUT_MS / 60000}min, Reconcile interval: ${RECONCILE_INTERVAL_MS / 1000}s`);
+
+  // Run immediately
+  await reconcile().catch((err) => log.error('reconcile error:', err));
+
+  scheduleInterval('task-engine', RECONCILE_INTERVAL_MS, reconcile);
 });

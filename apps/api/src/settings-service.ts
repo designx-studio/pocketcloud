@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@prisma/client';
 import { decryptSecret, encryptSecret } from './security.js';
+import { recordAudit } from './audit.js';
 
 export const SETTINGS = {
   controlPlaneName: { category: 'general', secret: false, schema: z.string().min(1).max(120), description: 'Display name shown in the dashboard.' },
@@ -45,7 +46,7 @@ export async function updateSetting(prisma: PrismaClient, userId: string, ipAddr
   const validated = validateSetting(input.key, input.value ?? '');
   const stored = definition.secret ? encryptSecret(validated.value) : validated.value;
   const row = await prisma.setting.upsert({ where: { key: validated.key }, update: { value: stored, category: validated.category, isSecret: validated.secret, updatedBy: userId }, create: { key: validated.key, value: stored, category: validated.category, isSecret: validated.secret, updatedBy: userId } });
-  await prisma.auditLog.create({ data: { userId, action: 'setting_update', resource: 'Setting', resourceId: row.key, ipAddress, metadata: JSON.stringify({ key: row.key, category: row.category, secret: row.isSecret }) } });
+  await recordAudit(prisma, { userId, action: 'setting_update', resource: 'Setting', resourceId: row.key, ipAddress, metadata: { key: row.key, category: row.category, secret: row.isSecret } });
   return { key: row.key, category: row.category, value: row.isSecret ? mask(validated.value) : validated.value, isSecret: row.isSecret, description: definition.description, updatedAt: row.updatedAt, updatedBy: row.updatedBy };
 }
 

@@ -10,22 +10,14 @@ import { z } from 'zod';
 import { config } from './config.js';
 import { hashPassword, verifyPassword, signAccess, randomToken, hashToken } from './security.js';
 import { sanitizeEnvironment, parseBlueprintManifest, validateCompatibility } from '@pocketcloud/blueprint';
-import { toJsonField, fromJsonField, isSQLite } from './db-compat.js';
+import { toJsonField, toUptimeField } from './db-compat.js';
+import { recordAudit } from './audit.js';
+import { bearerToken, buildAgentInstallCommand, serializeMetric, serializeTask } from './http-utils.js';
+import { agentOwnsServer, authenticateAgent, findAgentByCredential } from './agent-auth.js';
+import { REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH, issueSession, publicUser } from './auth-session.js';
 
 const prisma = new PrismaClient();
 const app = Fastify({ logger: true, bodyLimit: 2 * 1024 * 1024 });
-
-// Keep IP-only HTTP deployments usable while retaining Secure cookies behind HTTPS.
-const isSecureRequest = (req: any) => {
-  const forwardedProto = req.headers['x-forwarded-proto'];
-  return forwardedProto === 'https' || req.protocol === 'https';
-};
-const refreshCookieOptions = (req: any) => ({
-  httpOnly: true,
-  secure: isSecureRequest(req),
-  sameSite: 'lax' as const,
-  path: '/api/v1/auth'
-});
 
 await app.register(helmet);
 await app.register(cookie);
@@ -70,33 +62,15 @@ app.post('/api/v1/auth/register', async (req, reply) => {
     }
   });
 
-  await prisma.auditLog.create({
-    data: {
-      userId: user.id,
-      action: 'user_register',
-      resource: 'User',
-      resourceId: user.id,
-      ipAddress: req.ip
-    }
+  await recordAudit(prisma, {
+    userId: user.id,
+    action: 'user_register',
+    resource: 'User',
+    resourceId: user.id,
+    ipAddress: req.ip
   });
 
-  const accessToken = await signAccess(user.id, user.role);
-  const refresh = randomToken();
-
-  await prisma.session.create({
-    data: {
-      userId: user.id,
-      refreshHash: hashToken(refresh),
-      expiresAt: new Date(Date.now() + 30 * 864e5)
-    }
-  });
-
-  reply.setCookie('refresh_token', refresh, refreshCookieOptions(req));
-
-  return reply.code(201).send({
-    accessToken,
-    user: { id: user.id, email: user.email, role: user.role }
-  });
+  return reply.code(201).send(await issueSession(prisma, req, reply, user));
 });
 
 app.post('/api/v1/auth/login', async (req, reply) => {
@@ -111,23 +85,7 @@ app.post('/api/v1/auth/login', async (req, reply) => {
     return reply.code(401).send({ error: 'invalid_credentials' });
   }
 
-  const accessToken = await signAccess(user.id, user.role);
-  const refresh = randomToken();
-
-  await prisma.session.create({
-    data: {
-      userId: user.id,
-      refreshHash: hashToken(refresh),
-      expiresAt: new Date(Date.now() + 30 * 864e5)
-    }
-  });
-
-  reply.setCookie('refresh_token', refresh, refreshCookieOptions(req));
-
-  return {
-    accessToken,
-    user: { id: user.id, email: user.email, role: user.role }
-  };
+  return issueSession(prisma, req, reply, user);
 });
 
 app.post('/api/v1/auth/demo', async (_req, reply) => {
@@ -175,8 +133,8 @@ app.post('/api/v1/auth/demo', async (_req, reply) => {
     // Seed metrics
     await prisma.healthMetric.createMany({
       data: [
-        { serverId: s1.id, cpu: 18.5, memory: 40.2, disk: 45.0, load: 0.15, swap: 0, uptime: isSQLite() ? 86400 : (BigInt(86400) as any) },
-        { serverId: s2.id, cpu: 12.0, memory: 25.4, disk: 20.1, load: 0.08, swap: 0, uptime: isSQLite() ? 172800 : (BigInt(172800) as any) }
+        { serverId: s1.id, cpu: 18.5, memory: 40.2, disk: 45.0, load: 0.15, swap: 0, uptime: toUptimeField(86400) as any },
+        { serverId: s2.id, cpu: 12.0, memory: 25.4, disk: 20.1, load: 0.08, swap: 0, uptime: toUptimeField(172800) as any }
       ]
     });
 
@@ -203,16 +161,14 @@ app.post('/api/v1/auth/demo', async (_req, reply) => {
     });
   }
 
-  const accessToken = await signAccess(user.id, user.role);
-
   return reply.code(200).send({
-    accessToken,
-    user: { id: user.id, email: user.email, role: user.role }
+    accessToken: await signAccess(user.id, user.role),
+    user: publicUser(user)
   });
 });
 
 app.post('/api/v1/auth/refresh', async (req, reply) => {
-  const token = req.cookies.refresh_token;
+  const token = req.cookies[REFRESH_COOKIE_NAME];
   if (!token) {
     return reply.code(401).send({ error: 'no_refresh_token' });
   }
@@ -227,34 +183,18 @@ app.post('/api/v1/auth/refresh', async (req, reply) => {
     return reply.code(401).send({ error: 'invalid_or_expired_session' });
   }
 
-  const newRefresh = randomToken();
-  await prisma.session.update({
-    where: { id: session.id },
-    data: {
-      refreshHash: hashToken(newRefresh),
-      expiresAt: new Date(Date.now() + 30 * 864e5)
-    }
-  });
-
-  reply.setCookie('refresh_token', newRefresh, refreshCookieOptions(req));
-
-  const accessToken = await signAccess(session.user.id, session.user.role);
-
-  return {
-    accessToken,
-    user: { id: session.user.id, email: session.user.email, role: session.user.role }
-  };
+  return issueSession(prisma, req, reply, session.user, session.id);
 });
 
 app.post('/api/v1/auth/logout', async (req, reply) => {
-  const token = req.cookies.refresh_token;
+  const token = req.cookies[REFRESH_COOKIE_NAME];
   if (token) {
     await prisma.session.updateMany({
       where: { refreshHash: hashToken(token) },
       data: { revokedAt: new Date() }
     });
   }
-  reply.clearCookie('refresh_token', { path: '/api/v1/auth' });
+  reply.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
   return { ok: true };
 });
 
@@ -273,11 +213,10 @@ app.addHook('preHandler', async (req, reply) => {
     '/docs'
   ];
   if (open.some(p => req.url === p || req.url.startsWith(p))) return;
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
+  const tokenStr = bearerToken(req.headers.authorization);
+  if (!tokenStr) {
     return reply.code(401).send({ error: 'unauthorized' });
   }
-  const tokenStr = authHeader.slice(7);
   const isTaskActionRoute = req.url.startsWith('/api/v1/tasks/') && (req.url.endsWith('/complete') || req.url.endsWith('/logs') || req.url.includes('/complete?') || req.url.includes('/logs?'));
 
   try {
@@ -293,11 +232,7 @@ app.addHook('preHandler', async (req, reply) => {
     }
   } catch (err) {
     if (isTaskActionRoute) {
-      const tokenHash = hashToken(tokenStr);
-      const agent = await prisma.agent.findUnique({
-        where: { credentialHash: tokenHash },
-        include: { server: true }
-      });
+      const agent = await findAgentByCredential(prisma, tokenStr);
       if (agent) {
         (req as any).agent = agent;
         return;
@@ -327,10 +262,7 @@ app.get('/api/v1/servers', async () => {
   // Convert BigInt fields to Number for JSON serialization
   return servers.map((server: any) => ({
     ...server,
-    metrics: server.metrics.map((m: any) => ({
-      ...m,
-      uptime: m.uptime ? Number(m.uptime) : null
-    }))
+    metrics: server.metrics.map(serializeMetric)
   }));
 });
 
@@ -359,26 +291,19 @@ app.post('/api/v1/servers', async (req, reply) => {
   });
 
   const auth = (req as any).auth;
-  await prisma.auditLog.create({
-    data: {
-      userId: auth?.userId || null,
-      action: 'server_create',
-      resource: 'Server',
-      resourceId: server.id,
-      ipAddress: req.ip,
-      metadata: JSON.stringify({ name: server.name, provider: server.provider })
-    }
+  await recordAudit(prisma, {
+    userId: auth?.userId,
+    action: 'server_create',
+    resource: 'Server',
+    resourceId: server.id,
+    ipAddress: req.ip,
+    metadata: { name: server.name, provider: server.provider }
   });
-
-  const host = (config.POCKETCLOUD_DOMAIN !== 'localhost' ? config.POCKETCLOUD_DOMAIN : (req.headers.host || 'localhost')) as string;
-  const hostPart = host.split(':')[0] || '';
-  const isIPOrLocalhost = hostPart === 'localhost' || /^[0-9.]+$/.test(hostPart);
-  const scheme = isIPOrLocalhost ? 'http' : 'https';
 
   return reply.code(201).send({
     server,
     bootstrapToken: rawToken,
-    installCommand: `curl -fsSL ${scheme}://${host}/install-agent.sh | bash -s -- --token ${rawToken} --control-plane ${scheme}://${host}`
+    installCommand: buildAgentInstallCommand(req.headers.host, rawToken)
   });
 });
 
@@ -400,16 +325,9 @@ app.post('/api/v1/servers/:id/bootstrap-token', async (req, reply) => {
     }
   });
 
-  const host = (config.POCKETCLOUD_DOMAIN !== 'localhost' ? config.POCKETCLOUD_DOMAIN : (req.headers.host || 'localhost')) as string;
-  const hostPart = host.split(':')[0] || '';
-  const isIPOrLocalhost = hostPart === 'localhost' || /^[0-9.]+$/.test(hostPart);
-  const scheme = isIPOrLocalhost ? 'http' : 'https';
-
-  const installCommand = `curl -fsSL ${scheme}://${host}/install-agent.sh | bash -s -- --token ${rawToken} --control-plane ${scheme}://${host}`;
-
   return {
     bootstrapToken: rawToken,
-    installCommand
+    installCommand: buildAgentInstallCommand(req.headers.host, rawToken)
   };
 });
 
@@ -455,15 +373,13 @@ app.delete('/api/v1/servers/:id', async (req, reply) => {
   
   const server = await prisma.server.findUnique({ where: { id } });
   if (server) {
-    await prisma.auditLog.create({
-      data: {
-        userId: auth?.userId || null,
-        action: 'server_delete',
-        resource: 'Server',
-        resourceId: id,
-        ipAddress: req.ip,
-        metadata: JSON.stringify({ name: server.name, provider: server.provider })
-      }
+    await recordAudit(prisma, {
+      userId: auth?.userId,
+      action: 'server_delete',
+      resource: 'Server',
+      resourceId: id,
+      ipAddress: req.ip,
+      metadata: { name: server.name, provider: server.provider }
     });
     await prisma.server.delete({ where: { id } });
   }
@@ -483,10 +399,7 @@ app.get('/api/v1/servers/:id/metrics', async (req, reply) => {
   });
 
   // Return in ascending time order for charting
-  return metrics.reverse().map((m: any) => ({
-    ...m,
-    uptime: Number(m.uptime) // BigInt → number for JSON serialisation
-  }));
+  return metrics.reverse().map(serializeMetric);
 });
 
 app.get('/api/v1/servers/:id/logs', async (req, reply) => {
@@ -556,15 +469,8 @@ app.post('/api/v1/agent/register', async (req, reply) => {
 });
 
 app.post('/api/v1/agent/heartbeat', async (req, reply) => {
-  const auth = req.headers.authorization?.replace('Bearer ', '');
-  if (!auth) return reply.code(401).send({ error: 'missing_agent_token' });
-
-  const agent = await prisma.agent.findUnique({
-    where: { credentialHash: hashToken(auth) },
-    include: { server: true }
-  });
-
-  if (!agent) return reply.code(401).send({ error: 'invalid_agent_token' });
+  const agent = await authenticateAgent(prisma, req, reply);
+  if (!agent) return reply;
 
   const payload = z.object({
     cpu: z.number().optional(),
@@ -599,7 +505,7 @@ app.post('/api/v1/agent/heartbeat', async (req, reply) => {
               disk: payload.disk,
               load: payload.load ?? 0,
               swap: payload.swap ?? 0,
-              uptime: isSQLite() ? Math.floor(payload.uptime ?? 0) : (BigInt(payload.uptime ?? 0) as any)
+              uptime: toUptimeField(payload.uptime) as any
             }
           })
         ]
@@ -611,14 +517,8 @@ app.post('/api/v1/agent/heartbeat', async (req, reply) => {
 
 // AGENT TASK POLLING (no user JWT — uses agent credential)
 app.get('/api/v1/agent/tasks/pending', async (req, reply) => {
-  const auth = req.headers.authorization?.replace('Bearer ', '');
-  if (!auth) return reply.code(401).send({ error: 'missing_agent_token' });
-
-  const agent = await prisma.agent.findUnique({
-    where: { credentialHash: hashToken(auth) },
-    include: { server: true }
-  });
-  if (!agent) return reply.code(401).send({ error: 'invalid_agent_token' });
+  const agent = await authenticateAgent(prisma, req, reply);
+  if (!agent) return reply;
 
   // Update agent last seen
   await prisma.agent.update({
@@ -636,10 +536,7 @@ app.get('/api/v1/agent/tasks/pending', async (req, reply) => {
   });
 
   // Ensure payload is properly deserialized for both SQLite and PostgreSQL
-  return tasks.map(task => ({
-    ...task,
-    payload: fromJsonField(task.payload)
-  }));
+  return tasks.map(serializeTask);
 });
 
 // TASK ENGINE ENDPOINTS
@@ -649,10 +546,7 @@ app.get('/api/v1/tasks', async () => {
     orderBy: { createdAt: 'desc' }
   });
   // Ensure payload is properly deserialized for both SQLite and PostgreSQL
-  return tasks.map(task => ({
-    ...task,
-    payload: fromJsonField(task.payload)
-  }));
+  return tasks.map(serializeTask);
 });
 
 app.post('/api/v1/tasks', async (req, reply) => {
@@ -690,22 +584,17 @@ app.post('/api/v1/tasks', async (req, reply) => {
     include: { logs: true }
   });
 
-  await prisma.auditLog.create({
-    data: {
-      userId: auth.userId,
-      action: 'task_dispatch',
-      resource: 'Task',
-      resourceId: task.id,
-      ipAddress: req.ip,
-      metadata: JSON.stringify({ type: task.type, serverId: task.serverId })
-    }
+  await recordAudit(prisma, {
+    userId: auth.userId,
+    action: 'task_dispatch',
+    resource: 'Task',
+    resourceId: task.id,
+    ipAddress: req.ip,
+    metadata: { type: task.type, serverId: task.serverId }
   });
 
   // Ensure payload is properly deserialized for both SQLite and PostgreSQL
-  return reply.code(202).send({
-    ...task,
-    payload: fromJsonField(task.payload)
-  });
+  return reply.code(202).send(serializeTask(task));
 });
 
 app.get('/api/v1/tasks/:id', async (req, reply) => {
@@ -717,10 +606,7 @@ app.get('/api/v1/tasks/:id', async (req, reply) => {
 
   if (!task) return reply.code(404).send({ error: 'task_not_found' });
   // Ensure payload is properly deserialized for both SQLite and PostgreSQL
-  return {
-    ...task,
-    payload: fromJsonField(task.payload)
-  };
+  return serializeTask(task);
 });
 
 app.post('/api/v1/tasks/:id/logs', async (req, reply) => {
@@ -733,8 +619,7 @@ app.post('/api/v1/tasks/:id/logs', async (req, reply) => {
   const task = await prisma.task.findUnique({ where: { id: taskId } });
   if (!task) return reply.code(404).send({ error: 'task_not_found' });
 
-  const agent = (req as any).agent;
-  if (agent && agent.serverId !== task.serverId) {
+  if (!agentOwnsServer((req as any).agent, task.serverId)) {
     return reply.code(403).send({ error: 'forbidden', message: 'Agent not authorized for this server\'s tasks.' });
   }
 
@@ -756,7 +641,7 @@ app.post('/api/v1/tasks/:id/complete', async (req, reply) => {
   if (!existingTask) return reply.code(404).send({ error: 'task_not_found' });
 
   const agent = (req as any).agent;
-  if (agent && agent.serverId !== existingTask.serverId) {
+  if (!agentOwnsServer(agent, existingTask.serverId)) {
     return reply.code(403).send({ error: 'forbidden', message: 'Agent not authorized for this server\'s tasks.' });
   }
 
@@ -770,22 +655,17 @@ app.post('/api/v1/tasks/:id/complete', async (req, reply) => {
     include: { logs: true }
   });
 
-  await prisma.auditLog.create({
-    data: {
-      userId: (req as any).auth?.userId || null,
-      action: `task_complete_${body.status.toLowerCase()}`,
-      resource: 'Task',
-      resourceId: task.id,
-      ipAddress: req.ip,
-      metadata: JSON.stringify({ message: body.message, agentId: agent?.id })
-    }
+  await recordAudit(prisma, {
+    userId: (req as any).auth?.userId,
+    action: `task_complete_${body.status.toLowerCase()}`,
+    resource: 'Task',
+    resourceId: task.id,
+    ipAddress: req.ip,
+    metadata: { message: body.message, agentId: agent?.id }
   });
 
   // Ensure payload is properly deserialized for both SQLite and PostgreSQL
-  return reply.code(200).send({
-    ...task,
-    payload: fromJsonField(task.payload)
-  });
+  return reply.code(200).send(serializeTask(task));
 });
 
 // BLUEPRINTS ENGINE ENDPOINTS
@@ -826,15 +706,13 @@ app.post('/api/v1/blueprints', async (req, reply) => {
   });
 
   const auth = (req as any).auth;
-  await prisma.auditLog.create({
-    data: {
-      userId: auth?.userId || null,
-      action: 'blueprint_create',
-      resource: 'Blueprint',
-      resourceId: blueprint.id,
-      ipAddress: req.ip,
-      metadata: JSON.stringify({ name: blueprint.name, serverId: blueprint.serverId })
-    }
+  await recordAudit(prisma, {
+    userId: auth?.userId,
+    action: 'blueprint_create',
+    resource: 'Blueprint',
+    resourceId: blueprint.id,
+    ipAddress: req.ip,
+    metadata: { name: blueprint.name, serverId: blueprint.serverId }
   });
 
   return reply.code(201).send(blueprint);
@@ -886,15 +764,13 @@ app.post('/api/v1/blueprints/restore', async (req, reply) => {
     include: { logs: true }
   });
 
-  await prisma.auditLog.create({
-    data: {
-      userId: auth.userId,
-      action: 'blueprint_restore',
-      resource: 'Blueprint',
-      resourceId: version.blueprintId,
-      ipAddress: req.ip,
-      metadata: JSON.stringify({ blueprintVersionId: version.id, targetServerId: targetServer.id, taskId: task.id })
-    }
+  await recordAudit(prisma, {
+    userId: auth.userId,
+    action: 'blueprint_restore',
+    resource: 'Blueprint',
+    resourceId: version.blueprintId,
+    ipAddress: req.ip,
+    metadata: { blueprintVersionId: version.id, targetServerId: targetServer.id, taskId: task.id }
   });
 
   return reply.code(202).send({ taskId: task.id, status: task.status, warnings: compat.warnings });
@@ -942,14 +818,12 @@ app.get('/api/v1/backups/export', async (req, reply) => {
   };
 
   const auth = (req as any).auth;
-  await prisma.auditLog.create({
-    data: {
-      userId: auth?.userId || null,
-      action: 'backup_export',
-      resource: 'Backup',
-      ipAddress: req.ip,
-      metadata: JSON.stringify({ serverCount: servers.length, blueprintCount: blueprints.length })
-    }
+  await recordAudit(prisma, {
+    userId: auth?.userId,
+    action: 'backup_export',
+    resource: 'Backup',
+    ipAddress: req.ip,
+    metadata: { serverCount: servers.length, blueprintCount: blueprints.length }
   });
 
   reply.header('Content-Type', 'application/json');
@@ -1021,14 +895,12 @@ app.post('/api/v1/backups/import', async (req, reply) => {
   }
 
   const auth = (req as any).auth;
-  await prisma.auditLog.create({
-    data: {
-      userId: auth?.userId || null,
-      action: 'backup_import',
-      resource: 'Backup',
-      ipAddress: req.ip,
-      metadata: JSON.stringify({ importedServers, importedBlueprints })
-    }
+  await recordAudit(prisma, {
+    userId: auth?.userId,
+    action: 'backup_import',
+    resource: 'Backup',
+    ipAddress: req.ip,
+    metadata: { importedServers, importedBlueprints }
   });
 
   return reply.code(200).send({
