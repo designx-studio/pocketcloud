@@ -75,6 +75,7 @@ async function checkSession() {
     // Session is invalid or expired
   }
 }
+function bindCopyButton(buttonId,sourceId,message){$(buttonId)?.addEventListener('click',()=>{const text=$(sourceId)?.textContent;if(text){navigator.clipboard.writeText(text);toast(message,'success')}})}
 function bindEvents(){
   ['btnLandingLogin','btnLandingGetStarted','btnHeroDeploy','btnHeroGetStarted','btnStartBuilding'].forEach(id=>$(id)?.addEventListener('click',()=>auth.accessToken?switchView('dashboard'):$('modalAuth')?.classList.remove('hidden')));
   ['btnHeroDemo','btnDemoLogin'].forEach(id=>$(id)?.addEventListener('click',demoLogin));
@@ -125,21 +126,9 @@ function bindEvents(){
     loadServers();
   });
 
-  $('btnCopyInstallSection')?.addEventListener('click', () => {
-    const text = $('txtAgentInstallSectionCmd')?.textContent;
-    if (text) {
-      navigator.clipboard.writeText(text);
-      toast('Copied agent installation command!', 'success');
-    }
-  });
-
-  $('btnCopyControlPlaneInstall')?.addEventListener('click', () => {
-    const text = $('txtControlPlaneInstallCmd')?.textContent;
-    if (text) {
-      navigator.clipboard.writeText(text);
-      toast('Copied deploy command!', 'success');
-    }
-  });
+  bindCopyButton('btnCopyInstallSection', 'txtAgentInstallSectionCmd', 'Copied agent installation command!');
+  bindCopyButton('btnCopyControlPlaneInstall', 'txtControlPlaneInstallCmd', 'Copied deploy command!');
+  bindCopyButton('btnCopyReinstallAgentCmd', 'txtReinstallAgentCmd', 'Copied reinstallation command!');
 
   $('btnGenerateAgentInstall')?.addEventListener('click', async () => {
     if (!state.selectedServer) return toast('No server selected', 'error');
@@ -154,13 +143,6 @@ function bindEvents(){
     }
   });
 
-  $('btnCopyReinstallAgentCmd')?.addEventListener('click', () => {
-    const text = $('txtReinstallAgentCmd')?.textContent;
-    if (text) {
-      navigator.clipboard.writeText(text);
-      toast('Copied reinstallation command!', 'success');
-    }
-  });
 }
 document.addEventListener('DOMContentLoaded',()=>{
   bindEvents();

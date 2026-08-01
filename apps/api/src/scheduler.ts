@@ -8,8 +8,10 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { scheduleInterval, serviceLogger, startService } from './service-runtime.js';
 
 const prisma = new PrismaClient();
+const log = serviceLogger('scheduler');
 
 const JOBS: Array<{ name: string; intervalMs: number; fn: () => Promise<void> }> = [
   {
@@ -27,7 +29,7 @@ const JOBS: Array<{ name: string; intervalMs: number; fn: () => Promise<void> }>
         data: { status: 'OFFLINE' }
       });
       if (result.count > 0) {
-        console.log(`[scheduler/offline-detection] Marked ${result.count} server(s) OFFLINE.`);
+        log.info(`offline-detection: Marked ${result.count} server(s) OFFLINE.`);
       }
     }
   },
@@ -44,7 +46,7 @@ const JOBS: Array<{ name: string; intervalMs: number; fn: () => Promise<void> }>
         }
       });
       if (result.count > 0) {
-        console.log(`[scheduler/bootstrap-token-cleanup] Deleted ${result.count} expired/used tokens.`);
+        log.info(`bootstrap-token-cleanup: Deleted ${result.count} expired/used tokens.`);
       }
     }
   },
@@ -57,7 +59,7 @@ const JOBS: Array<{ name: string; intervalMs: number; fn: () => Promise<void> }>
         where: { receivedAt: { lt: cutoff } }
       });
       if (result.count > 0) {
-        console.log(`[scheduler/heartbeat-pruner] Deleted ${result.count} old heartbeat records.`);
+        log.info(`heartbeat-pruner: Deleted ${result.count} old heartbeat records.`);
       }
     }
   },
@@ -70,7 +72,7 @@ const JOBS: Array<{ name: string; intervalMs: number; fn: () => Promise<void> }>
         where: { collectedAt: { lt: cutoff } }
       });
       if (result.count > 0) {
-        console.log(`[scheduler/metrics-pruner] Deleted ${result.count} old health metrics.`);
+        log.info(`metrics-pruner: Deleted ${result.count} old health metrics.`);
       }
     }
   },
@@ -87,36 +89,23 @@ const JOBS: Array<{ name: string; intervalMs: number; fn: () => Promise<void> }>
         }
       });
       if (result.count > 0) {
-        console.log(`[scheduler/session-cleanup] Deleted ${result.count} expired/revoked sessions.`);
+        log.info(`session-cleanup: Deleted ${result.count} expired/revoked sessions.`);
       }
     }
   }
 ];
 
-async function runJob(job: typeof JOBS[0]): Promise<void> {
-  try {
-    await job.fn();
-  } catch (err) {
-    console.error(`[scheduler/${job.name}] Error:`, err instanceof Error ? err.message : err);
-  }
-}
-
-async function main(): Promise<void> {
-  console.log('[scheduler] PocketCloud Scheduler started.');
+startService('scheduler', async () => {
+  log.info('PocketCloud Scheduler started.');
 
   // Run all jobs immediately on startup
   for (const job of JOBS) {
-    await runJob(job);
+    await job.fn().catch((err) => log.error(`${job.name}: Error:`, err instanceof Error ? err.message : err));
   }
 
   // Register recurring intervals
   for (const job of JOBS) {
-    setInterval(() => runJob(job), job.intervalMs);
-    console.log(`[scheduler] Registered job '${job.name}' every ${job.intervalMs / 1000}s`);
+    scheduleInterval(`scheduler/${job.name}`, job.intervalMs, job.fn);
+    log.info(`Registered job '${job.name}' every ${job.intervalMs / 1000}s`);
   }
-}
-
-main().catch((err) => {
-  console.error('[scheduler] Fatal error:', err);
-  process.exit(1);
 });

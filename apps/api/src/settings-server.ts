@@ -3,16 +3,17 @@ import { PrismaClient } from '@prisma/client';
 import { verifyAccess } from './security.js';
 import { listSettings, seedDefaultSettings, settingUpdateSchema, updateSetting } from './settings-service.js';
 import { config } from './config.js';
+import { bearerToken } from './http-utils.js';
 
 const prisma = new PrismaClient();
 const app = Fastify({ logger: true });
 
 app.addHook('preHandler', async (req, reply) => {
   if (req.url === '/health') return;
-  const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) return reply.code(401).send({ error: 'unauthorized' });
+  const token = bearerToken(req.headers.authorization);
+  if (!token) return reply.code(401).send({ error: 'unauthorized' });
   try {
-    const auth = await verifyAccess(header.slice(7));
+    const auth = await verifyAccess(token);
     if (auth.role === 'VIEWER') return reply.code(403).send({ error: 'forbidden', message: 'Administrator access is required.' });
     (req as any).auth = auth;
   } catch {

@@ -30,3 +30,9 @@ export function fromJsonField(value: unknown): unknown {
 export function isSQLite(): boolean {
   return Boolean(process.env.DATABASE_URL?.startsWith('file:'));
 }
+
+/** Uptime is stored as an integer on SQLite and a BigInt on PostgreSQL */
+export function toUptimeField(seconds: number | undefined): unknown {
+  const value = Math.floor(seconds ?? 0);
+  return isSQLite() ? value : BigInt(value);
+}
