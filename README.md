@@ -6,7 +6,21 @@
 
 PocketCloud is a premium, self-hosted control plane for managing distributed Linux VPS infrastructure. It allows you to pair server nodes, monitor real-time telemetry, execute allow-listed maintenance actions, capture environment blueprints, and perform 1-click server migrations.
 
----
+## 🚀 One-command deployment
+
+On a fresh Ubuntu/Debian VPS, run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/designx-studio/pocketcloud/main/deploy/install.sh | sudo bash
+```
+
+The installer installs Docker when needed, downloads PocketCloud, generates production secrets, starts PostgreSQL, Redis, the API, workers, dashboard, and Caddy, then prints the dashboard URL. For a private repository, clone or download the repository first and run `sudo bash deploy/install.sh`; the public curl command requires the installer URL to be publicly reachable.
+
+To deploy a custom domain or repository ref:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/designx-studio/pocketcloud/main/deploy/install.sh | sudo POCKETCLOUD_DOMAIN=cloud.example.com POCKETCLOUD_REF=main bash
+```
 
 ## 🚀 Key Features
 
@@ -17,8 +31,6 @@ PocketCloud is a premium, self-hosted control plane for managing distributed Lin
 - ⚡ **1-Click Migration**: Replicate or restore a blueprint onto any online server node instantly.
 - 🧠 **AI Diagnostics & Sanitizer**: Automatically scan, sanitize raw logs, and recommend solutions for infrastructure issues.
 - 💾 **Disaster Recovery**: Export and import complete control plane states as portable JSON archives.
-
----
 
 ## 🏗️ Architecture
 
@@ -32,40 +44,24 @@ graph TD
     Agent[PocketCloud Agent] -->|HTTPS Telemetry & Task Poll| API
 ```
 
----
+## ⚙️ Local development
 
-## ⚙️ Quick Start
+```bash
+cp .env.example .env
+npm install
+npm run db:push
+npm run dev
+```
 
-### Local Development
+Dashboard: `http://localhost:3000`, API: `http://localhost:8080`.
 
-1. **Clone the repository and set up environment configuration:**
-   ```bash
-   cp .env.example .env
-   npm install
-   ```
+## Running tests & verification
 
-2. **Initialize the local development SQLite database:**
-   ```bash
-   npm run db:push
-   ```
-
-3. **Start the API server and frontend application:**
-   ```bash
-   npm run dev
-   ```
-   - Dashboard: `http://localhost:3000`
-   - API Server: `http://localhost:8080`
-
-### Running Tests & Verification
-
-Validate code quality, TypeScript definitions, and run all unit tests:
 ```bash
 npm run lint
 npm run build
 npm run test
 ```
-
----
 
 ## 📁 Repository Structure
 
@@ -74,18 +70,14 @@ npm run test
 - `agent`: The pocket-size agent binary written in Go with an automatic systemd installer.
 - `packages/blueprint`: Environment spec validator, parser, and secret sanitizer.
 - `deploy`: Docker Compose orchestration, Caddy reverse-proxy configuration, and production deployment scripts.
-- `docs`: Multi-page documentation covering [Architecture](docs/architecture.md), [API Reference](docs/api.md), [Security Policy](docs/security.md), and [Blueprint Spec](docs/blueprint-spec.md).
-
----
+- `docs`: Multi-page documentation covering architecture, API, security, and blueprint specifications.
 
 ## 🔒 Security
 
 - **Agent Hardening**: Enforces systemd sandbox parameters (`NoNewPrivileges=true`, `ProtectSystem=strict`, etc.).
 - **Server Isolation**: Strict authorization validation prevents agents from accessing or modifying tasks that do not belong to their assigned `serverId`.
 - **Argon2id Hashing**: Standard password security using memory-hard Argon2id parameters.
-- **Audit Logging**: Fully compliant, immutable audit trails tracking all administrative actions (operator registration, node pair/unpair, task dispatch, backups).
-
----
+- **Audit Logging**: Fully compliant, immutable audit trails tracking all administrative actions.
 
 ## 📄 License
 
