@@ -361,10 +361,15 @@ app.post('/api/v1/servers', async (req, reply) => {
     }
   });
 
+  const host = (config.POCKETCLOUD_DOMAIN !== 'localhost' ? config.POCKETCLOUD_DOMAIN : (req.headers.host || 'localhost')) as string;
+  const hostPart = host.split(':')[0] || '';
+  const isIPOrLocalhost = hostPart === 'localhost' || /^[0-9.]+$/.test(hostPart);
+  const scheme = isIPOrLocalhost ? 'http' : 'https';
+
   return reply.code(201).send({
     server,
     bootstrapToken: rawToken,
-    installCommand: `curl -fsSL https://${config.POCKETCLOUD_DOMAIN !== 'localhost' ? config.POCKETCLOUD_DOMAIN : (req.headers.host || 'localhost')}/install-agent.sh | bash -s -- --token ${rawToken}`
+    installCommand: `curl -fsSL ${scheme}://${host}/install-agent.sh | bash -s -- --token ${rawToken}`
   });
 });
 

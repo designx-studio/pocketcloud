@@ -30,7 +30,7 @@ install_docker() {
 fetch_source() {
   local tmp clone_url
   tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
+  trap "rm -rf '$tmp'" EXIT
   log "Downloading PocketCloud"
   clone_url="$REPO_URL"
   if [[ -n "${GITHUB_TOKEN:-}" && "$REPO_URL" == https://github.com/* ]]; then
