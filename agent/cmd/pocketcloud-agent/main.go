@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -17,6 +18,9 @@ import (
 )
 
 const agentVersion = "1.1.0"
+
+// Service names reach systemctl as an argument; anything option- or path-like is refused.
+var validServiceName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9@._-]{0,63}$`)
 
 // ─── API types ────────────────────────────────────────────────────────────────
 
@@ -186,6 +190,11 @@ func executeTask(c *http.Client, controlPlane, token string, t Task) {
 		svc := payload.Service
 		if svc == "" {
 			svc = "nginx"
+		}
+		if !validServiceName.MatchString(svc) {
+			sendTaskLog(c, controlPlane, token, t.ID, "ERROR", "Rejected restart_service: invalid service name.")
+			completeTask(c, controlPlane, token, t.ID, "FAILED", fmt.Sprintf("Invalid service name: %q", svc))
+			return
 		}
 		out, err := runCmd("systemctl", "restart", svc)
 		finalMsg = trimOutput(out, err, "restart_service:"+svc)

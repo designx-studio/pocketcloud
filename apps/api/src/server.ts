@@ -8,7 +8,7 @@ import swaggerUi from '@fastify/swagger-ui';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { config } from './config.js';
-import { hashPassword, verifyPassword, signAccess, randomToken, hashToken } from './security.js';
+import { hashPassword, verifyPassword, signAccess, verifyAccess, randomToken, hashToken } from './security.js';
 import { sanitizeEnvironment, parseBlueprintManifest, validateCompatibility } from '@pocketcloud/blueprint';
 import { toJsonField, fromJsonField, isSQLite } from './db-compat.js';
 
@@ -27,18 +27,34 @@ const refreshCookieOptions = (req: any) => ({
   path: '/api/v1/auth'
 });
 
+const isProduction = config.NODE_ENV === 'production';
+const allowedOrigins = config.CORS_ORIGIN.split(',').map((value) => value.trim()).filter(Boolean);
+// Wildcard CORS is only reachable outside production; config.ts refuses '*' in production.
+const allowAnyOrigin = allowedOrigins.includes('*');
+const docsEnabled = config.ENABLE_API_DOCS === 'true' || (!isProduction && config.ENABLE_API_DOCS !== 'false');
+const demoEnabled = config.ENABLE_DEMO_MODE === 'true' || (!isProduction && config.ENABLE_DEMO_MODE !== 'false');
+
 await app.register(helmet);
 await app.register(cookie);
 await app.register(cors, {
   origin: (origin, cb) => {
-    // Reflect the request origin back to support credentials: true
-    cb(null, true);
+    // Same-origin and non-browser clients (agents, curl) send no Origin header.
+    if (!origin || allowAnyOrigin) return cb(null, true);
+    cb(null, allowedOrigins.includes(origin));
   },
   credentials: true
 });
 await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
-await app.register(swagger, { openapi: { info: { title: 'PocketCloud API', version: '1.1.0' } } });
-await app.register(swaggerUi, { routePrefix: '/docs' });
+if (docsEnabled) {
+  await app.register(swagger, { openapi: { info: { title: 'PocketCloud API', version: '1.1.0' } } });
+  await app.register(swaggerUi, { routePrefix: '/docs' });
+}
+
+const authRateLimit = {
+  config: {
+    rateLimit: { max: 10, timeWindow: '1 minute' }
+  }
+};
 
 // Health check endpoint
 app.get('/health', async () => ({
@@ -49,11 +65,31 @@ app.get('/health', async () => ({
 }));
 
 // AUTHENTICATION ENDPOINTS
-app.post('/api/v1/auth/register', async (req, reply) => {
+// Registration bootstraps the first OWNER only; further accounts must be created
+// by an authenticated OWNER so the control plane is not publicly joinable.
+app.post('/api/v1/auth/register', authRateLimit, async (req, reply) => {
   const body = z.object({
     email: z.string().email(),
-    password: z.string().min(8)
+    password: z.string().min(8),
+    role: z.enum(['OWNER', 'VIEWER']).optional()
   }).parse(req.body);
+
+  const userCount = await prisma.user.count();
+  let role: 'OWNER' | 'VIEWER' = 'OWNER';
+
+  if (userCount > 0) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return reply.code(403).send({ error: 'registration_closed' });
+    }
+    try {
+      const access = await verifyAccess(authHeader.slice(7));
+      if (access.role !== 'OWNER') return reply.code(403).send({ error: 'registration_closed' });
+    } catch {
+      return reply.code(401).send({ error: 'invalid_token' });
+    }
+    role = body.role ?? 'VIEWER';
+  }
 
   const normalizedEmail = body.email.toLowerCase();
   const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
@@ -66,7 +102,7 @@ app.post('/api/v1/auth/register', async (req, reply) => {
     data: {
       email: normalizedEmail,
       passwordHash,
-      role: 'OWNER'
+      role
     }
   });
 
@@ -99,7 +135,7 @@ app.post('/api/v1/auth/register', async (req, reply) => {
   });
 });
 
-app.post('/api/v1/auth/login', async (req, reply) => {
+app.post('/api/v1/auth/login', authRateLimit, async (req, reply) => {
   const body = z.object({
     email: z.string().email(),
     password: z.string()
@@ -130,12 +166,15 @@ app.post('/api/v1/auth/login', async (req, reply) => {
   };
 });
 
-app.post('/api/v1/auth/demo', async (_req, reply) => {
+app.post('/api/v1/auth/demo', authRateLimit, async (_req, reply) => {
+  if (!demoEnabled) return reply.code(404).send({ error: 'demo_mode_disabled' });
+
   const demoEmail = 'demo@pocketcloud.dev';
   let user = await prisma.user.findUnique({ where: { email: demoEmail } });
 
   if (!user) {
-    const passwordHash = await hashPassword('demo-read-only-access');
+    // Login-less account: the password is never used, so it is random and discarded.
+    const passwordHash = await hashPassword(randomToken());
     user = await prisma.user.create({
       data: {
         email: demoEmail,
@@ -211,7 +250,7 @@ app.post('/api/v1/auth/demo', async (_req, reply) => {
   });
 });
 
-app.post('/api/v1/auth/refresh', async (req, reply) => {
+app.post('/api/v1/auth/refresh', authRateLimit, async (req, reply) => {
   const token = req.cookies.refresh_token;
   if (!token) {
     return reply.code(401).send({ error: 'no_refresh_token' });
@@ -260,7 +299,7 @@ app.post('/api/v1/auth/logout', async (req, reply) => {
 
 // AUTHORIZATION HOOK FOR PROTECTED ROUTES
 app.addHook('preHandler', async (req, reply) => {
-  const open = [
+  const open = new Set([
     '/health',
     '/api/v1/auth/login',
     '/api/v1/auth/register',
@@ -269,19 +308,22 @@ app.addHook('preHandler', async (req, reply) => {
     '/api/v1/auth/logout',
     '/api/v1/agent/register',
     '/api/v1/agent/heartbeat',
-    '/api/v1/agent/tasks/pending',
-    '/docs'
-  ];
-  if (open.some(p => req.url === p || req.url.startsWith(p))) return;
+    '/api/v1/agent/tasks/pending'
+  ]);
+  // Match the routed path only: prefix matching on the raw URL let crafted
+  // paths such as /health/../v1/servers skip authentication.
+  const pathname = new URL(req.url, 'http://localhost').pathname.replace(/\/+$/, '') || '/';
+  if (open.has(pathname)) return;
+  if (docsEnabled && (pathname === '/docs' || pathname.startsWith('/docs/'))) return;
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     return reply.code(401).send({ error: 'unauthorized' });
   }
   const tokenStr = authHeader.slice(7);
-  const isTaskActionRoute = req.url.startsWith('/api/v1/tasks/') && (req.url.endsWith('/complete') || req.url.endsWith('/logs') || req.url.includes('/complete?') || req.url.includes('/logs?'));
+  const isTaskActionRoute = pathname.startsWith('/api/v1/tasks/') && (pathname.endsWith('/complete') || pathname.endsWith('/logs'));
 
   try {
-    const access = await (await import('./security.js')).verifyAccess(tokenStr);
+    const access = await verifyAccess(tokenStr);
     (req as any).auth = access;
 
     // Enforce read-only restriction for VIEWER role on mutating endpoints
@@ -315,10 +357,20 @@ app.get('/api/v1/auth/me', async (req) => {
 });
 
 // SERVER NODES MANAGEMENT
+// Agent rows hold the hashed pairing credential, which must never leave the API.
+const agentPublicSelect = {
+  id: true,
+  serverId: true,
+  version: true,
+  connectedAt: true,
+  lastSeenAt: true,
+  createdAt: true
+} as const;
+
 app.get('/api/v1/servers', async () => {
   const servers = await prisma.server.findMany({
     include: {
-      agent: true,
+      agent: { select: agentPublicSelect },
       metrics: { orderBy: { collectedAt: 'desc' }, take: 1 }
     },
     orderBy: { createdAt: 'desc' }
@@ -418,7 +470,7 @@ app.get('/api/v1/servers/:id', async (req, reply) => {
   const server = await prisma.server.findUnique({
     where: { id },
     include: {
-      agent: true,
+      agent: { select: agentPublicSelect },
       metrics: { orderBy: { collectedAt: 'desc' }, take: 20 },
       tasks: { orderBy: { createdAt: 'desc' }, take: 10 },
       blueprints: true
@@ -444,7 +496,7 @@ app.patch('/api/v1/servers/:id', async (req, reply) => {
   const server = await prisma.server.update({
     where: { id },
     data: body,
-    include: { agent: true }
+    include: { agent: { select: agentPublicSelect } }
   });
   return server;
 });
@@ -671,6 +723,12 @@ app.post('/api/v1/tasks', async (req, reply) => {
     ]),
     payload: z.record(z.unknown()).default({})
   }).parse(req.body);
+
+  if (body.type === 'restart_service') {
+    // The agent passes this straight to systemctl; reject option-like or path-like names.
+    z.object({ service: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9@._-]{0,63}$/).optional() })
+      .parse(body.payload);
+  }
 
   const auth = (req as any).auth;
   const task = await prisma.task.create({
@@ -929,8 +987,13 @@ app.post('/api/v1/diagnostics/ai', async (req, reply) => {
 
 // BACKUP & DISASTER RECOVERY EXPORT/IMPORT
 app.get('/api/v1/backups/export', async (req, reply) => {
+  const auth = (req as any).auth;
+  if (auth?.role !== 'OWNER') {
+    return reply.code(403).send({ error: 'forbidden', message: 'Owner access is required to export control-plane data.' });
+  }
+
   const users = await prisma.user.findMany({ select: { id: true, email: true, role: true, createdAt: true } });
-  const servers = await prisma.server.findMany({ include: { agent: true } });
+  const servers = await prisma.server.findMany({ include: { agent: { select: agentPublicSelect } } });
   const blueprints = await prisma.blueprint.findMany({ include: { versions: true } });
 
   const backupData = {
@@ -941,7 +1004,6 @@ app.get('/api/v1/backups/export', async (req, reply) => {
     blueprints
   };
 
-  const auth = (req as any).auth;
   await prisma.auditLog.create({
     data: {
       userId: auth?.userId || null,
@@ -1044,7 +1106,12 @@ app.setErrorHandler((error, req, reply) => {
   if (error instanceof z.ZodError) {
     return reply.code(400).send({ error: 'validation_error', details: error.issues });
   }
-  return reply.code(500).send({ error: 'internal_error', message: error.message });
+  const statusCode = error.statusCode && error.statusCode < 500 ? error.statusCode : 500;
+  if (statusCode < 500) {
+    return reply.code(statusCode).send({ error: error.code ?? 'request_error', message: error.message });
+  }
+  // Internal failures may embed query fragments or paths: log them, never return them.
+  return reply.code(500).send({ error: 'internal_error' });
 });
 
 app.listen({ port: config.PORT, host: '0.0.0.0' }).catch((err) => {

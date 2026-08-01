@@ -1,6 +1,6 @@
 # PocketCloud API Reference
 
-Interactive API docs are available at: `https://<your-domain>/docs` (Swagger UI, powered by `@fastify/swagger-ui`).
+Interactive API docs are available at: `https://<your-domain>/docs` (Swagger UI, powered by `@fastify/swagger-ui`). They are served only when `ENABLE_API_DOCS=true`, which is the default in development and off in production.
 
 ## Base URL
 
@@ -23,11 +23,13 @@ Access tokens expire in **15 minutes**. Obtain a new one via `POST /api/v1/auth/
 ## Auth Endpoints
 
 ### `POST /api/v1/auth/register`
-Register a new operator account.
+Register an operator account.
+
+The first account on a fresh control plane is created unauthenticated and becomes the `OWNER`. Afterwards the endpoint requires an `OWNER` access token (`403 registration_closed` otherwise) and creates a `VIEWER` unless `role` is supplied.
 
 **Body:**
 ```json
-{ "email": "admin@example.com", "password": "min8chars" }
+{ "email": "admin@example.com", "password": "min8chars", "role": "VIEWER" }
 ```
 
 **Response 201:**

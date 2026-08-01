@@ -27,7 +27,7 @@
     "@fastify/swagger-ui": "^2.1.0",
     "@pocketcloud/blueprint": "*",
     "@prisma/client": "^5.18.0",
-    "argon2": "^0.31.2",
+    "argon2": "^0.45.1",
     "dotenv": "^17.4.2",
     "fastify": "^4.28.1",
     "ioredis": "^5.4.1",

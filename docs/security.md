@@ -16,6 +16,7 @@ PocketCloud is a privileged infrastructure control plane. It has SSH-equivalent 
 
 ### Operator Accounts
 
+- `POST /api/v1/auth/register` bootstraps the **first** account only (role `OWNER`). Once any account exists, registration requires an `OWNER` access token and defaults new accounts to `VIEWER`.
 - Passwords hashed with **Argon2id** (OWASP-recommended, memory-hard)
   - Memory: 64 MB, Iterations: 3, Parallelism: 4
 - Access tokens: **JWT HS256**, 15-minute TTL
@@ -90,7 +91,22 @@ Redaction happens at capture time (server-side) and is **irreversible**.
 ### Rate Limiting
 
 - **300 requests/minute per IP** (API level, via `@fastify/rate-limit`)
+- **10 requests/minute per IP** on `/api/v1/auth/{register,login,demo,refresh}`
 - Returns `429 Too Many Requests` with `Retry-After` header
+
+### CORS
+
+- Browser origins are matched against `CORS_ORIGIN` (comma-separated allowlist)
+- `CORS_ORIGIN=*` is accepted only when `NODE_ENV` is not `production`
+
+### Optional Public Surfaces
+
+Both default to enabled in development and disabled in production:
+
+| Variable | Controls |
+|---|---|
+| `ENABLE_API_DOCS` | Swagger UI and the OpenAPI document at `/docs` |
+| `ENABLE_DEMO_MODE` | `POST /api/v1/auth/demo`, which mints an unauthenticated read-only `VIEWER` session and seeds sample data |
 
 ---
 
@@ -123,6 +139,8 @@ Audit logs are **immutable** — there is no API endpoint to delete them.
 
 ## Backup Security
 
+- `GET /api/v1/backups/export` requires the `OWNER` role
+- Agent records are returned without `credentialHash` or `publicKey` on every endpoint
 - Backup exports are JSON files containing server metadata and blueprint manifests
 - **Secrets are NOT included** — they are redacted at capture time
 - Backup files should be encrypted at rest using your preferred tool (e.g., `gpg --symmetric`)
