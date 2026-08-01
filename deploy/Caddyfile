@@ -1,4 +1,4 @@
-:80 {
+(routing) {
   encode gzip zstd
 
   @agent-releases path /api/v1/agent/releases/* /api/v1/agent/releases
@@ -25,3 +25,8 @@
     -X-Powered-By
   }
 }
+
+:80 {
+  import routing
+}
+

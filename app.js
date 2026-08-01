@@ -1,5 +1,54 @@
 const API_BASE=(window.location.protocol==='file:'||['3000','5500'].includes(window.location.port))?'http://localhost:8080':'';const auth={accessToken:null,user:null};const state={activeView:'landing',activeTab:'nodes',selectedServer:null,servers:[],blueprints:[],tasks:[],polling:null};const $=id=>document.getElementById(id);const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const iconRefresh=()=>window.lucide?.createIcons?.();
-async function api(method,path,body){const headers={'Content-Type':'application/json'};if(auth.accessToken)headers.Authorization=`Bearer ${auth.accessToken}`;const r=await fetch(`${API_BASE}${path}`,{method,headers,credentials:'include',body:body===undefined?undefined:JSON.stringify(body)});const t=await r.text();let d;try{d=t?JSON.parse(t):null}catch{d=t}if(r.status===401){auth.accessToken=null;auth.user=null;switchView('landing')}if(!r.ok)throw Object.assign(new Error(d?.message||d?.error||`HTTP ${r.status}`),{status:r.status,body:d});return d}const get=p=>api('GET',p),post=(p,b)=>api('POST',p,b),put=(p,b)=>api('PUT',p,b),del=p=>api('DELETE',p);
+let refreshing = null;
+async function api(method,path,body){
+  const headers={'Content-Type':'application/json'};
+  if(auth.accessToken)headers.Authorization=`Bearer ${auth.accessToken}`;
+  let r=await fetch(`${API_BASE}${path}`,{method,headers,credentials:'include',body:body===undefined?undefined:JSON.stringify(body)});
+  
+  if (r.status === 401 && path !== '/api/v1/auth/refresh' && path !== '/api/v1/auth/login' && path !== '/api/v1/auth/register') {
+    if (!refreshing) {
+      refreshing = (async () => {
+        try {
+          const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+          });
+          if (res.ok) {
+            const data = await res.json();
+            auth.accessToken = data.accessToken;
+            auth.user = data.user;
+            return true;
+          }
+        } catch (e) {}
+        return false;
+      })();
+    }
+    const refreshed = await refreshing;
+    refreshing = null;
+    if (refreshed) {
+      headers.Authorization = `Bearer ${auth.accessToken}`;
+      r = await fetch(`${API_BASE}${path}`, {
+        method,
+        headers,
+        credentials: 'include',
+        body: body === undefined ? undefined : JSON.stringify(body)
+      });
+    }
+  }
+
+  const t=await r.text();
+  let d;
+  try{d=t?JSON.parse(t):null}catch{d=t}
+  if(r.status===401){
+    auth.accessToken=null;
+    auth.user=null;
+    switchView('landing');
+  }
+  if(!r.ok)throw Object.assign(new Error(d?.message||d?.error||`HTTP ${r.status}`),{status:r.status,body:d});
+  return d;
+}
+const get=p=>api('GET',p),post=(p,b)=>api('POST',p,b),put=(p,b)=>api('PUT',p,b),del=p=>api('DELETE',p);
 function toast(m,type='info'){const c=$('toastContainer')||document.body.appendChild(Object.assign(document.createElement('div'),{id:'toastContainer'}));const i=document.createElement('div');i.className=`toast toast-${type}`;i.textContent=m;c.appendChild(i);setTimeout(()=>i.remove(),4500)}
 function switchView(v){const l=$('viewLanding'),d=$('viewDashboard');if(v==='dashboard'&&!auth.accessToken)return $('modalAuth')?.classList.remove('hidden');l?.classList.toggle('hidden',v==='dashboard');d?.classList.toggle('hidden',v!=='dashboard');state.activeView=v;if(v==='dashboard'){startPolling();loadDashboard()}iconRefresh()}function startPolling(){if(!state.polling)state.polling=setInterval(()=>loadServers().catch(()=>{}),15000)}function stopPolling(){if(state.polling)clearInterval(state.polling);state.polling=null}
 async function loadDashboard(){await Promise.allSettled([loadServers(),loadBlueprints()]);updateUser()}async function loadServers(){state.servers=await get('/api/v1/servers');renderServers(state.servers);updateStats();if(state.selectedServer)selectServer(state.selectedServer.id,false)}async function loadBlueprints(){state.blueprints=await get('/api/v1/blueprints');updateStats();if(state.activeTab==='blueprints')renderBlueprints()}function updateUser(){const e=auth.user?.email||'—',r=auth.user?.role==='VIEWER'?'Read-Only Viewer':'Control Plane Owner';['currentUserEmail','userProfileEmail'].forEach(id=>{if($(id))$(id).textContent=e});['currentUserRole','userProfileRole'].forEach(id=>{if($(id))$(id).textContent=r});if($('dashUserAvatar'))$('dashUserAvatar').textContent=e[0]?.toUpperCase()||'U';$('demoBadgeWrap')?.classList.toggle('hidden',auth.user?.role!=='VIEWER')}function updateStats(){const v={valTotalNodes:state.servers.length,valAgents:state.servers.filter(s=>s.status==='ONLINE').length,valBlueprints:state.blueprints.length,badgeNodesCount:state.servers.length,badgeNodesCountInner:state.servers.length,badgeBlueprintsCount:state.blueprints.length};Object.entries(v).forEach(([id,x])=>{if($(id))$(id).textContent=x})}
@@ -16,4 +65,66 @@ async function loadLogs(){const o=$('diagConsoleOutput');if(!o)return;o.textCont
 async function runDiagnostics(){try{const r=await post('/api/v1/diagnostics/ai',{rawLogs:$('diagConsoleOutput')?.textContent||''});if($('aiDiagOutput'))$('aiDiagOutput').textContent=`${r.diagnosticResults.join('\n')}\n\n${r.sanitizedLogs}`}catch(e){toast(e.message,'error')}}async function createBackup(){try{const r=await fetch(`${API_BASE}/api/v1/backups/export`,{headers:auth.accessToken?{Authorization:`Bearer ${auth.accessToken}`}:{}});if(!r.ok)throw Error(`Backup failed: HTTP ${r.status}`);const b=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`pocketcloud-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();toast('Backup exported','success')}catch(e){toast(e.message,'error')}}
 async function loadSettings(){let c=$('configurationPanel');if(!c){c=document.createElement('div');c.id='configurationPanel';c.className='panel';$('sectionSettings')?.prepend(c)}c.innerHTML='<div class="panel-head"><strong class="panel-title">Configuration</strong><span class="panel-head-spacer"></span><span>Runtime values only</span></div><div id="settingsGrid" class="settings-grid" style="padding:14px"></div>';try{const rows=await get('/api/v1/settings'),g=$('settingsGrid');g.innerHTML=rows.map(s=>`<form class="panel setting-card" data-setting-key="${esc(s.key)}" style="padding:14px;margin:0"><strong>${esc(s.key)}</strong><small style="display:block;color:var(--muted);margin:5px 0 10px">${esc(s.description)}</small><input class="form-input" name="value" value="${esc(s.value)}" ${s.isSecret?'placeholder="••••••••"':''} aria-label="${esc(s.key)}"><button class="btn btn-amber btn-sm" style="margin-top:10px">Save</button><small class="setting-status" style="display:block;margin-top:6px;color:var(--muted)">${s.isSecret?'Secret masked':''} • Updated ${esc(new Date(s.updatedAt).toLocaleString())}</small></form>`).join('');g.querySelectorAll('form').forEach(f=>f.addEventListener('submit',async e=>{e.preventDefault();const input=f.querySelector('input');try{const r=await put(`/api/v1/settings/${encodeURIComponent(f.dataset.settingKey)}`,{value:input.value});input.value=r.value;f.querySelector('.setting-status').textContent='Saved successfully';toast('Configuration saved','success')}catch(x){f.querySelector('.setting-status').textContent=x.message;toast(x.message,'error')}}))}catch(e){c.innerHTML+=`<div class="empty-state">Unable to load configuration: ${esc(e.message)}</div>`}}
 async function submitAuth(e){e.preventDefault();try{const r=await post($('authModalTitle')?.textContent==='Create Account'?'/api/v1/auth/register':'/api/v1/auth/login',{email:$('inputAuthEmail')?.value.trim(),password:$('inputAuthPassword')?.value});auth.accessToken=r.accessToken;auth.user=r.user;$('modalAuth')?.classList.add('hidden');switchView('dashboard')}catch(x){if($('authErrorMsg'))$('authErrorMsg').textContent=x.message}}async function demoLogin(){try{const r=await post('/api/v1/auth/demo',{});auth.accessToken=r.accessToken;auth.user=r.user;$('modalAuth')?.classList.add('hidden');switchView('dashboard')}catch(e){toast(e.message,'error')}}function logout(){stopPolling();auth.accessToken=null;auth.user=null;post('/api/v1/auth/logout',{}).catch(()=>{});switchView('landing')}
-function bindEvents(){['btnLandingLogin','btnLandingGetStarted','btnHeroDeploy','btnHeroGetStarted','btnStartBuilding'].forEach(id=>$(id)?.addEventListener('click',()=>auth.accessToken?switchView('dashboard'):$('modalAuth')?.classList.remove('hidden')));['btnHeroDemo','btnDemoLogin'].forEach(id=>$(id)?.addEventListener('click',demoLogin));['btnLogout','navItemLogout','settingsLogoutBtn'].forEach(id=>$(id)?.addEventListener('click',logout));$('btnCloseAuthModal')?.addEventListener('click',()=>$('modalAuth')?.classList.add('hidden'));$('formAuth')?.addEventListener('submit',submitAuth);$('btnSwitchAuthMode')?.addEventListener('click',()=>{if($('authModalTitle'))$('authModalTitle').textContent=$('authModalTitle').textContent==='Sign In'?'Create Account':'Sign In'});['nodes','tasks','blueprints','diagnostics','settings'].forEach(t=>$(`navItem${t[0].toUpperCase()}${t.slice(1)}`)?.addEventListener('click',()=>switchTab(t)));$('btnAddNode')?.addEventListener('click',()=>$('modalAddServer')?.classList.remove('hidden'));$('btnCloseNodeModal')?.addEventListener('click',()=>$('modalAddServer')?.classList.add('hidden'));$('btnCloseNodeModal2')?.addEventListener('click',()=>$('modalAddServer')?.classList.add('hidden'));$('btnScanBlueprint')?.addEventListener('click',captureBlueprint);$('btnExecuteRestore')?.addEventListener('click',executeRestore);$('btnRunAiDiagnostics')?.addEventListener('click',runDiagnostics);$('btnCreateBackup')?.addEventListener('click',createBackup);document.querySelectorAll('.btn-drawer-action').forEach(b=>b.addEventListener('click',()=>b.dataset.task==='capture_blueprint'?captureBlueprint():dispatchTask(b.dataset.task==='restart_services'?'restart_service':b.dataset.task==='manage_ssh_keys'?'collect_logs':b.dataset.task)));document.querySelectorAll('.btn-quick-dispatch').forEach(b=>b.addEventListener('click',()=>dispatchTask(b.dataset.action==='restart_services'?'restart_service':b.dataset.action)))}document.addEventListener('DOMContentLoaded',()=>{bindEvents();iconRefresh()});
+async function checkSession() {
+  try {
+    const r = await post('/api/v1/auth/refresh', {});
+    auth.accessToken = r.accessToken;
+    auth.user = r.user;
+    switchView('dashboard');
+  } catch (e) {
+    // Session is invalid or expired
+  }
+}
+function bindEvents(){
+  ['btnLandingLogin','btnLandingGetStarted','btnHeroDeploy','btnHeroGetStarted','btnStartBuilding'].forEach(id=>$(id)?.addEventListener('click',()=>auth.accessToken?switchView('dashboard'):$('modalAuth')?.classList.remove('hidden')));
+  ['btnHeroDemo','btnDemoLogin'].forEach(id=>$(id)?.addEventListener('click',demoLogin));
+  ['btnLogout','navItemLogout','settingsLogoutBtn'].forEach(id=>$(id)?.addEventListener('click',logout));
+  $('btnCloseAuthModal')?.addEventListener('click',()=>$('modalAuth')?.classList.add('hidden'));
+  $('formAuth')?.addEventListener('submit',submitAuth);
+  $('btnSwitchAuthMode')?.addEventListener('click',()=>{if($('authModalTitle'))$('authModalTitle').textContent=$('authModalTitle').textContent==='Sign In'?'Create Account':'Sign In'});
+  ['nodes','tasks','blueprints','diagnostics','settings'].forEach(t=>$(`navItem${t[0].toUpperCase()}${t.slice(1)}`)?.addEventListener('click',()=>switchTab(t)));
+  $('btnAddNode')?.addEventListener('click',()=>$('modalAddServer')?.classList.remove('hidden'));
+  $('btnCloseNodeModal')?.addEventListener('click',()=>$('modalAddServer')?.classList.add('hidden'));
+  $('btnCloseNodeModal2')?.addEventListener('click',()=>$('modalAddServer')?.classList.add('hidden'));
+  $('btnScanBlueprint')?.addEventListener('click',captureBlueprint);
+  $('btnExecuteRestore')?.addEventListener('click',executeRestore);
+  $('btnRunAiDiagnostics')?.addEventListener('click',runDiagnostics);
+  $('btnCreateBackup')?.addEventListener('click',createBackup);
+  document.querySelectorAll('.btn-drawer-action').forEach(b=>b.addEventListener('click',()=>b.dataset.task==='capture_blueprint'?captureBlueprint():dispatchTask(b.dataset.task==='restart_services'?'restart_service':b.dataset.task==='manage_ssh_keys'?'collect_logs':b.dataset.task)));
+  document.querySelectorAll('.btn-quick-dispatch').forEach(b=>b.addEventListener('click',()=>dispatchTask(b.dataset.action==='restart_services'?'restart_service':b.dataset.action)));
+  
+  $('formAddServer')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('formAddServer').querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await post('/api/v1/servers', {
+        name: $('inputNodeName').value.trim(),
+        provider: $('inputNodeProvider').value.trim(),
+        ipAddress: $('inputNodeIP').value.trim(),
+        os: $('inputNodeOS').value.trim()
+      });
+      $('formAddServer').classList.add('hidden');
+      if ($('txtAgentInstallCmd')) $('txtAgentInstallCmd').textContent = res.installCommand;
+      $('boxAgentInstallCmd')?.classList.remove('hidden');
+      toast('Server node registered!', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  $('btnFinishNodeAdd')?.addEventListener('click', () => {
+    $('modalAddServer')?.classList.add('hidden');
+    $('formAddServer')?.reset();
+    $('formAddServer')?.classList.remove('hidden');
+    $('boxAgentInstallCmd')?.classList.add('hidden');
+    loadServers();
+  });
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  bindEvents();
+  iconRefresh();
+  checkSession();
+});

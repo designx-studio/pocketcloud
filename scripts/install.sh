@@ -11,11 +11,9 @@ if [[ ! -f "$SOURCE_ROOT/deploy/docker-compose.yml" ]];then TMP_ROOT=$(mktemp -d
 POCKETCLOUD_DOMAIN="${POCKETCLOUD_DOMAIN:-}"; if [[ -z "$POCKETCLOUD_DOMAIN"&&-t 0&&-r /dev/tty ]];then read -r -p "PocketCloud domain or public IP [localhost]: " POCKETCLOUD_DOMAIN </dev/tty;fi; POCKETCLOUD_DOMAIN="${POCKETCLOUD_DOMAIN:-localhost}"
 if [[ "$POCKETCLOUD_DOMAIN" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ || "$POCKETCLOUD_DOMAIN" == "localhost" ]]; then
   PUBLIC_SCHEME=http
-  CADDY_SITE=":80"
   warn "No trusted TLS certificate is available for $POCKETCLOUD_DOMAIN. Configuring HTTP mode."
 else
   PUBLIC_SCHEME=https
-  CADDY_SITE="{$POCKETCLOUD_DOMAIN}"
 fi
 source /etc/os-release; [[ "$ID" == ubuntu ]]||die "Unsupported OS: $ID. Ubuntu 22.04+ required."; [[ "${VERSION_ID%%.*}" -ge 22 ]]||die "Ubuntu $VERSION_ID is too old."; info "OS: Ubuntu $VERSION_ID ✔"
 TOTAL_MEM_KB=$(awk '/MemTotal/{print $2}' /proc/meminfo); [[ $TOTAL_MEM_KB -ge 1500000 ]]||warn "Low memory."; FREE_KB=$(df -k /|awk 'NR==2{print $4}'); [[ $FREE_KB -ge 15000000 ]]||warn "Low disk space."
@@ -40,8 +38,9 @@ REFRESH_TOKEN_SECRET=${REFRESH_SECRET}
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 EOF
 chmod 600 "$PREFIX/.env"; info "Generated production configuration and secrets.";fi
-cat > "$PREFIX/deploy/Caddyfile" <<EOF
-${CADDY_SITE} {
+if [[ "$POCKETCLOUD_DOMAIN" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ || "$POCKETCLOUD_DOMAIN" == "localhost" ]]; then
+  cat > "$PREFIX/deploy/Caddyfile" <<EOF
+(routing) {
   encode gzip zstd
   @agent-releases path /api/v1/agent/releases/* /api/v1/agent/releases
   handle @agent-releases { reverse_proxy agent-registry:8081 }
@@ -52,7 +51,34 @@ ${CADDY_SITE} {
   handle { reverse_proxy dashboard:80 }
   header { -Server X-Powered-By }
 }
+
+:80 {
+  import routing
+}
 EOF
+else
+  cat > "$PREFIX/deploy/Caddyfile" <<EOF
+(routing) {
+  encode gzip zstd
+  @agent-releases path /api/v1/agent/releases/* /api/v1/agent/releases
+  handle @agent-releases { reverse_proxy agent-registry:8081 }
+  @settings path /api/v1/settings /api/v1/settings/*
+  handle @settings { reverse_proxy settings:8082 }
+  @api path /api/* /health /docs/*
+  handle @api { reverse_proxy api:8080 }
+  handle { reverse_proxy dashboard:80 }
+  header { -Server X-Powered-By }
+}
+
+:80 {
+  import routing
+}
+
+{\$POCKETCLOUD_DOMAIN} {
+  import routing
+}
+EOF
+fi
 cd "$PREFIX"; COMPOSE_FILE="$PREFIX/deploy/docker-compose.yml"; ln -sfn ../.env "$PREFIX/deploy/.env"; COMPOSE=(docker compose --project-name pocketcloud --file "$COMPOSE_FILE" --env-file "$PREFIX/.env"); "${COMPOSE[@]}" config >/dev/null||die "Compose configuration validation failed."; "${COMPOSE[@]}" up -d --build
 for i in {1..30};do "${COMPOSE[@]}" exec -T database pg_isready -U pocketcloud -d pocketcloud >/dev/null 2>&1&&break; [[ $i -eq 30 ]]&&die "PostgreSQL did not become ready."; sleep 2;done
 "${COMPOSE[@]}" exec -T api npx prisma migrate deploy

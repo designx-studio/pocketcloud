@@ -209,6 +209,46 @@ app.post('/api/v1/auth/demo', async (_req, reply) => {
   });
 });
 
+app.post('/api/v1/auth/refresh', async (req, reply) => {
+  const token = req.cookies.refresh_token;
+  if (!token) {
+    return reply.code(401).send({ error: 'no_refresh_token' });
+  }
+
+  const tokenHash = hashToken(token);
+  const session = await prisma.session.findUnique({
+    where: { refreshHash: tokenHash },
+    include: { user: true }
+  });
+
+  if (!session || session.revokedAt || session.expiresAt < new Date()) {
+    return reply.code(401).send({ error: 'invalid_or_expired_session' });
+  }
+
+  const newRefresh = randomToken();
+  await prisma.session.update({
+    where: { id: session.id },
+    data: {
+      refreshHash: hashToken(newRefresh),
+      expiresAt: new Date(Date.now() + 30 * 864e5)
+    }
+  });
+
+  reply.setCookie('refresh_token', newRefresh, {
+    httpOnly: true,
+    secure: config.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/api/v1/auth'
+  });
+
+  const accessToken = await signAccess(session.user.id, session.user.role);
+
+  return {
+    accessToken,
+    user: { id: session.user.id, email: session.user.email, role: session.user.role }
+  };
+});
+
 app.post('/api/v1/auth/logout', async (req, reply) => {
   const token = req.cookies.refresh_token;
   if (token) {
@@ -225,7 +265,11 @@ app.post('/api/v1/auth/logout', async (req, reply) => {
 app.addHook('preHandler', async (req, reply) => {
   const open = [
     '/health',
-    '/api/v1/auth/',
+    '/api/v1/auth/login',
+    '/api/v1/auth/register',
+    '/api/v1/auth/demo',
+    '/api/v1/auth/refresh',
+    '/api/v1/auth/logout',
     '/api/v1/agent/register',
     '/api/v1/agent/heartbeat',
     '/api/v1/agent/tasks/pending',
