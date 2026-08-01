@@ -578,7 +578,7 @@ app.post('/api/v1/agent/heartbeat', async (req, reply) => {
       data: { status: 'ONLINE' }
     }),
     prisma.heartbeat.create({
-      data: { serverId: agent.serverId, payload: toJsonField(payload) as any }
+      data: { serverId: agent.serverId, payload: JSON.stringify(payload) }
     }),
     ...(payload.cpu !== undefined && payload.memory !== undefined && payload.disk !== undefined
       ? [
