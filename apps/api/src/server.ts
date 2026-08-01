@@ -373,6 +373,37 @@ app.post('/api/v1/servers', async (req, reply) => {
   });
 });
 
+app.post('/api/v1/servers/:id/bootstrap-token', async (req, reply) => {
+  const id = (req.params as any).id;
+  const server = await prisma.server.findUnique({ where: { id } });
+  if (!server) return reply.code(404).send({ error: 'server_not_found' });
+
+  await prisma.bootstrapToken.deleteMany({
+    where: { serverId: id }
+  });
+
+  const rawToken = randomToken();
+  await prisma.bootstrapToken.create({
+    data: {
+      serverId: id,
+      tokenHash: hashToken(rawToken),
+      expiresAt: new Date(Date.now() + 60 * 60e3)
+    }
+  });
+
+  const host = (config.POCKETCLOUD_DOMAIN !== 'localhost' ? config.POCKETCLOUD_DOMAIN : (req.headers.host || 'localhost')) as string;
+  const hostPart = host.split(':')[0] || '';
+  const isIPOrLocalhost = hostPart === 'localhost' || /^[0-9.]+$/.test(hostPart);
+  const scheme = isIPOrLocalhost ? 'http' : 'https';
+
+  const installCommand = `curl -fsSL ${scheme}://${host}/install-agent.sh | bash -s -- --token ${rawToken}`;
+
+  return {
+    bootstrapToken: rawToken,
+    installCommand
+  };
+});
+
 app.get('/api/v1/servers/:id', async (req, reply) => {
   const id = (req.params as any).id;
   const server = await prisma.server.findUnique({

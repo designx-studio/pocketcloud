@@ -925,6 +925,25 @@
                     <pre class="console-box" id="taskConsoleOutput">> No task dispatched yet.</pre>
                   </div>
 
+                  <!-- Reinstall Agent -->
+                  <div class="detail-section">
+                    <div class="detail-section-title">Outbound Agent Setup</div>
+                    <div style="font-size:0.8rem;color:var(--muted);margin-bottom:10px">
+                      Need to connect or reinstall the agent on this VPS node? Generate a fresh command to run over SSH:
+                    </div>
+                    <button class="btn btn-ghost btn-sm" id="btnGenerateAgentInstall" style="margin-bottom:10px">
+                      <i data-lucide="refresh-cw"></i> Generate Reinstallation Command
+                    </button>
+                    <div id="boxReinstallAgentCmd" class="hidden">
+                      <div style="display:flex;background:#0f1117;border:1px solid rgba(245,191,56,0.15);border-radius:12px;padding:12px 16px;align-items:center;justify-content:space-between;gap:12px;">
+                        <code id="txtReinstallAgentCmd" style="color:#a3e6c8;font-size:0.8rem;font-family:var(--mono);word-break:break-all;user-select:all;"></code>
+                        <button id="btnCopyReinstallAgentCmd" class="btn btn-ghost btn-icon btn-sm" style="color:var(--muted);flex-shrink:0;border:none;padding:4px;" title="Copy to clipboard">
+                          <i data-lucide="copy" style="width:16px;height:16px;"></i>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
                 </div><!-- /#nodeDetailDrawer -->
               </div><!-- /.detail-body -->
             </div><!-- /.nodes-detail-pane -->
