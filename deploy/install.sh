@@ -60,6 +60,12 @@ derive_app_url() {
   host="${host#"${host%%[![:space:]]*}"}"
   host="${host%"${host##*[![:space:]]}"}"
   host="${host%/}"
+  
+  if [[ -z "$host" ]]; then
+    printf 'http://localhost'
+    return
+  fi
+  
   if [[ "$host" =~ ^https?:// ]]; then
     printf '%s' "$host"
   else
@@ -245,7 +251,18 @@ prompt_domain() {
     read -r -p "" domain </dev/tty || true
   fi
   if [[ -z "$domain" ]]; then
-    domain="$(curl -4fsSL --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+    log "Detecting public IP address..."
+    domain="$(curl -4fsSL --max-time 10 https://api.ipify.org 2>/dev/null || true)"
+  fi
+  # Fallback to local IP detection if ipify fails
+  if [[ -z "$domain" ]]; then
+    log "ipify failed, using local IP detection..."
+    domain="$(hostname -I 2>/dev/null | awk '{print $1}' || ip route get 1 2>/dev/null | awk '{print $7}' || true)"
+  fi
+  # Final fallback to localhost
+  if [[ -z "$domain" ]]; then
+    log "IP detection failed, using localhost..."
+    domain="localhost"
   fi
   domain="${domain#"${domain%%[![:space:]]*}"}"
   domain="${domain%"${domain##*[![:space:]]}"}"
@@ -253,6 +270,7 @@ prompt_domain() {
   # Strip scheme if the operator pasted a full URL into POCKETCLOUD_DOMAIN
   # so derive_app_url can re-apply https consistently when bare host given.
   [[ -n "$domain" ]] || fail "Could not determine the public host. Set POCKETCLOUD_DOMAIN=cloud.example.com and retry."
+  log "Using domain: $domain"
   printf '%s' "$domain"
 }
 
