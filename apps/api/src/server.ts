@@ -15,6 +15,32 @@ import { toJsonField, fromJsonField, isSQLite } from './db-compat.js';
 const prisma = new PrismaClient();
 const app = Fastify({ logger: true, bodyLimit: 2 * 1024 * 1024 });
 
+// Keep IP-only HTTP deployments usable while retaining Secure cookies behind HTTPS.
+const isSecureRequest = (req: any) => {
+  const forwardedProto = req.headers['x-forwarded-proto'];
+  return forwardedProto === 'https' || req.protocol === 'https';
+};
+const refreshCookieOptions = (req: any) => ({
+  httpOnly: true,
+  secure: isSecureRequest(req),
+  sameSite: 'lax' as const,
+  path: '/api/v1/auth'
+});
+
+// Keep IP-only HTTP deployments usable while retaining Secure cookies behind HTTPS.
+const isSecureRequest = (req: any) => {
+  const forwardedProto = req.headers['x-forwarded-proto'];
+  return config.NODE_ENV === 'production'
+    ? forwardedProto === 'https' || req.protocol === 'https'
+    : forwardedProto === 'https' || req.protocol === 'https';
+};
+const refreshCookieOptions = (req: any) => ({
+  httpOnly: true,
+  secure: isSecureRequest(req),
+  sameSite: 'lax' as const,
+  path: '/api/v1/auth'
+});
+
 await app.register(helmet);
 await app.register(cookie);
 await app.register(cors, {
@@ -79,12 +105,7 @@ app.post('/api/v1/auth/register', async (req, reply) => {
     }
   });
 
-  reply.setCookie('refresh_token', refresh, {
-    httpOnly: true,
-    secure: config.NODE_ENV === 'production',
-    sameSite: 'strict',
-    path: '/api/v1/auth'
-  });
+  reply.setCookie('refresh_token', refresh, refreshCookieOptions(req));
 
   return reply.code(201).send({
     accessToken,
@@ -115,12 +136,7 @@ app.post('/api/v1/auth/login', async (req, reply) => {
     }
   });
 
-  reply.setCookie('refresh_token', refresh, {
-    httpOnly: true,
-    secure: config.NODE_ENV === 'production',
-    sameSite: 'strict',
-    path: '/api/v1/auth'
-  });
+  reply.setCookie('refresh_token', refresh, refreshCookieOptions(req));
 
   return {
     accessToken,
@@ -234,12 +250,7 @@ app.post('/api/v1/auth/refresh', async (req, reply) => {
     }
   });
 
-  reply.setCookie('refresh_token', newRefresh, {
-    httpOnly: true,
-    secure: config.NODE_ENV === 'production',
-    sameSite: 'strict',
-    path: '/api/v1/auth'
-  });
+  reply.setCookie('refresh_token', newRefresh, refreshCookieOptions(req));
 
   const accessToken = await signAccess(session.user.id, session.user.role);
 
