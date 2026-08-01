@@ -17,9 +17,11 @@ export function toJsonField(value: unknown): unknown {
 /** Deserialize a JSON field from SQLite string, or pass through for PostgreSQL */
 export function fromJsonField(value: unknown): unknown {
   if (typeof value === 'string') {
+    if (value.trim() === '') return {};
     try {
       return JSON.parse(value);
-    } catch {
+    } catch (err) {
+      console.warn(`[db-compat] Stored JSON field is not parseable, falling back to {}: ${err instanceof Error ? err.message : String(err)}`);
       return {};
     }
   }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -17,6 +18,14 @@ import (
 )
 
 const agentVersion = "1.1.0"
+
+// maxResponseBytes bounds how much of a control-plane response is buffered.
+const maxResponseBytes = 1 << 20
+
+const (
+	completeTaskAttempts   = 3
+	completeTaskRetryDelay = 2 * time.Second
+)
 
 // ─── API types ────────────────────────────────────────────────────────────────
 
@@ -89,9 +98,18 @@ func doJSON(c *http.Client, method, url, token string, body interface{}, out int
 	}
 	defer resp.Body.Close()
 
-	if out != nil && resp.ContentLength != 0 {
-		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-			return resp.StatusCode, nil // response body may be empty
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if err != nil {
+		return resp.StatusCode, fmt.Errorf("reading %s %s response: %w", method, url, err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return resp.StatusCode, fmt.Errorf("%s %s returned HTTP %d: %s", method, url, resp.StatusCode, truncate(strings.TrimSpace(string(raw)), 400))
+	}
+
+	if out != nil && len(bytes.TrimSpace(raw)) > 0 {
+		if err := json.Unmarshal(raw, out); err != nil {
+			return resp.StatusCode, fmt.Errorf("decoding %s %s response: %w", method, url, err)
 		}
 	}
 	return resp.StatusCode, nil
@@ -101,15 +119,15 @@ func doJSON(c *http.Client, method, url, token string, body interface{}, out int
 
 func registerAgent(c *http.Client, controlPlane, bootstrapToken string) (*RegisterResponse, error) {
 	var res RegisterResponse
-	code, err := doJSON(c, http.MethodPost, controlPlane+"/api/v1/agent/register", "", RegisterRequest{
+	_, err := doJSON(c, http.MethodPost, controlPlane+"/api/v1/agent/register", "", RegisterRequest{
 		BootstrapToken: bootstrapToken,
 		Version:        agentVersion,
 	}, &res)
 	if err != nil {
 		return nil, err
 	}
-	if code != http.StatusOK && code != http.StatusCreated {
-		return nil, fmt.Errorf("registration returned HTTP %d", code)
+	if res.CredentialToken == "" {
+		return nil, fmt.Errorf("registration response did not contain a credential token")
 	}
 	return &res, nil
 }
@@ -118,21 +136,23 @@ func registerAgent(c *http.Client, controlPlane, bootstrapToken string) (*Regist
 
 func sendHeartbeat(c *http.Client, controlPlane, token string, payload HeartbeatPayload) {
 	code, err := doJSON(c, http.MethodPost, controlPlane+"/api/v1/agent/heartbeat", token, payload, nil)
-	if err != nil {
-		log.Printf("[WARN] heartbeat error: %v", err)
+	if err == nil {
 		return
 	}
 	if code == http.StatusUnauthorized {
-		log.Printf("[ERROR] heartbeat 401 — credential rejected by control plane")
+		log.Printf("[ERROR] heartbeat rejected — credential not accepted by control plane: %v", err)
+		return
 	}
+	log.Printf("[WARN] heartbeat error: %v", err)
 }
 
 // ─── Task polling & execution ─────────────────────────────────────────────────
 
 func pollTasks(c *http.Client, controlPlane, token string) {
 	var tasks []Task
-	code, err := doJSON(c, http.MethodGet, controlPlane+"/api/v1/agent/tasks/pending", token, nil, &tasks)
-	if err != nil || code != http.StatusOK {
+	_, err := doJSON(c, http.MethodGet, controlPlane+"/api/v1/agent/tasks/pending", token, nil, &tasks)
+	if err != nil {
+		log.Printf("[WARN] task poll failed: %v", err)
 		return
 	}
 
@@ -142,13 +162,28 @@ func pollTasks(c *http.Client, controlPlane, token string) {
 }
 
 func sendTaskLog(c *http.Client, controlPlane, token, taskID, level, message string) {
-	doJSON(c, http.MethodPost, controlPlane+"/api/v1/tasks/"+taskID+"/logs", token, // nolint: errcheck
-		TaskLogRequest{Level: level, Message: message}, nil)
+	if _, err := doJSON(c, http.MethodPost, controlPlane+"/api/v1/tasks/"+taskID+"/logs", token,
+		TaskLogRequest{Level: level, Message: message}, nil); err != nil {
+		log.Printf("[WARN] could not publish log for task %s: %v", taskID, err)
+	}
 }
 
+// completeTask reports a terminal task status. Losing this call leaves the task
+// stuck until the control plane times it out, so it is retried before giving up.
 func completeTask(c *http.Client, controlPlane, token, taskID, status, message string) {
-	doJSON(c, http.MethodPost, controlPlane+"/api/v1/tasks/"+taskID+"/complete", token, // nolint: errcheck
-		TaskCompleteRequest{Status: status, Message: message}, nil)
+	var lastErr error
+	for attempt := 1; attempt <= completeTaskAttempts; attempt++ {
+		_, lastErr = doJSON(c, http.MethodPost, controlPlane+"/api/v1/tasks/"+taskID+"/complete", token,
+			TaskCompleteRequest{Status: status, Message: message}, nil)
+		if lastErr == nil {
+			return
+		}
+		log.Printf("[WARN] could not report completion of task %s (attempt %d/%d): %v", taskID, attempt, completeTaskAttempts, lastErr)
+		if attempt < completeTaskAttempts {
+			time.Sleep(time.Duration(attempt) * completeTaskRetryDelay)
+		}
+	}
+	log.Printf("[ERROR] giving up reporting completion of task %s as %s: %v", taskID, status, lastErr)
 }
 
 func executeTask(c *http.Client, controlPlane, token string, t Task) {
@@ -162,6 +197,9 @@ func executeTask(c *http.Client, controlPlane, token string, t Task) {
 	case "update_packages":
 		out, err := runCmd("sh", "-c", "apt-get update -qq && apt-get upgrade -y -qq 2>&1 | tail -5")
 		finalMsg = trimOutput(out, err, "update_packages")
+		if err != nil {
+			finalStatus = "FAILED"
+		}
 
 	case "install_docker":
 		out, err := runCmd("sh", "-c", `
@@ -182,7 +220,12 @@ func executeTask(c *http.Client, controlPlane, token string, t Task) {
 
 	case "restart_service":
 		var payload struct{ Service string `json:"service"` }
-		json.Unmarshal(t.Payload, &payload)
+		if len(t.Payload) > 0 {
+			if err := json.Unmarshal(t.Payload, &payload); err != nil {
+				sendTaskLog(c, controlPlane, token, t.ID, "WARN",
+					fmt.Sprintf("Could not parse restart_service payload (%v). Falling back to default service.", err))
+			}
+		}
 		svc := payload.Service
 		if svc == "" {
 			svc = "nginx"
@@ -196,6 +239,9 @@ func executeTask(c *http.Client, controlPlane, token string, t Task) {
 	case "collect_logs":
 		out, err := runCmd("sh", "-c", "journalctl -n 100 --no-pager -o short-iso 2>&1")
 		finalMsg = trimOutput(out, err, "collect_logs")
+		if err != nil {
+			finalStatus = "FAILED"
+		}
 
 	case "update_agent":
 		sendTaskLog(c, controlPlane, token, t.ID, "INFO", "Downloading latest agent binary...")
@@ -207,7 +253,11 @@ func executeTask(c *http.Client, controlPlane, token string, t Task) {
 		finalMsg = "System reboot scheduled."
 		go func() {
 			time.Sleep(5 * time.Second)
-			exec.Command("reboot").Run()
+			if out, err := runCmd("reboot"); err != nil {
+				log.Printf("[ERROR] reboot failed: %v", err)
+				sendTaskLog(c, controlPlane, token, t.ID, "ERROR", trimOutput(out, err, "reboot"))
+				completeTask(c, controlPlane, token, t.ID, "FAILED", trimOutput(out, err, "reboot"))
+			}
 		}()
 
 	case "shutdown":
@@ -215,7 +265,11 @@ func executeTask(c *http.Client, controlPlane, token string, t Task) {
 		finalMsg = "System shutdown initiated."
 		go func() {
 			time.Sleep(5 * time.Second)
-			exec.Command("poweroff").Run()
+			if out, err := runCmd("poweroff"); err != nil {
+				log.Printf("[ERROR] shutdown failed: %v", err)
+				sendTaskLog(c, controlPlane, token, t.ID, "ERROR", trimOutput(out, err, "shutdown"))
+				completeTask(c, controlPlane, token, t.ID, "FAILED", trimOutput(out, err, "shutdown"))
+			}
 		}()
 
 	case "restore_blueprint":
@@ -277,6 +331,7 @@ func collectTelemetry() HeartbeatPayload {
 func getDistro() string {
 	out, err := exec.Command("sh", "-c", "lsb_release -rs 2>/dev/null || cat /etc/debian_version 2>/dev/null || echo unknown").Output()
 	if err != nil {
+		log.Printf("[WARN] could not determine distribution: %v", err)
 		return "unknown"
 	}
 	return strings.TrimSpace(string(out))
@@ -287,6 +342,7 @@ func getCPUUsage() float64 {
 	read := func() (uint64, uint64) {
 		data, err := os.ReadFile("/proc/stat")
 		if err != nil {
+			log.Printf("[WARN] could not read /proc/stat, reporting 0%% CPU: %v", err)
 			return 0, 0
 		}
 		lines := strings.Split(string(data), "\n")
@@ -321,6 +377,7 @@ func getCPUUsage() float64 {
 func getMemoryUsage() float64 {
 	data, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
+		log.Printf("[WARN] could not read /proc/meminfo, reporting 0%% memory: %v", err)
 		return 0
 	}
 	var total, avail float64
@@ -346,6 +403,7 @@ func getMemoryUsage() float64 {
 func getDiskUsage() float64 {
 	out, err := exec.Command("sh", "-c", "df -h / | awk 'NR==2{print $5}' | tr -d '%'").Output()
 	if err != nil {
+		log.Printf("[WARN] could not read disk usage, reporting 0%%: %v", err)
 		return 0
 	}
 	val, _ := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
@@ -355,6 +413,7 @@ func getDiskUsage() float64 {
 func getLoadAverage() float64 {
 	data, err := os.ReadFile("/proc/loadavg")
 	if err != nil {
+		log.Printf("[WARN] could not read /proc/loadavg, reporting 0: %v", err)
 		return 0
 	}
 	fields := strings.Fields(string(data))
@@ -368,6 +427,7 @@ func getLoadAverage() float64 {
 func getSwapUsage() float64 {
 	data, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
+		log.Printf("[WARN] could not read /proc/meminfo for swap, reporting 0%%: %v", err)
 		return 0
 	}
 	var swapTotal, swapFree float64
@@ -393,6 +453,7 @@ func getSwapUsage() float64 {
 func getUptime() int64 {
 	data, err := os.ReadFile("/proc/uptime")
 	if err != nil {
+		log.Printf("[WARN] could not read /proc/uptime, reporting 0: %v", err)
 		return 0
 	}
 	fields := strings.Fields(string(data))
