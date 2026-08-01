@@ -6,86 +6,66 @@
 
 PocketCloud is a premium, self-hosted control plane for managing distributed Linux VPS infrastructure. It allows you to pair server nodes, monitor real-time telemetry, execute allow-listed maintenance actions, capture environment blueprints, and perform 1-click server migrations.
 
----
+## 🚀 One-command deployment
+
+On a fresh Ubuntu/Debian VPS, run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/designx-studio/pocketcloud/main/deploy/install.sh | sudo bash
+```
+
+The installer installs Docker when needed, downloads PocketCloud, generates production secrets, starts PostgreSQL, Redis, the API, workers, dashboard, and Caddy, then prints the dashboard URL. For this private repository, clone it first and run `sudo bash deploy/install.sh`, or provide a GitHub token with `GITHUB_TOKEN=... sudo -E bash deploy/install.sh`. The public curl command becomes usable once the installer is hosted at a public URL.
+
+For a custom domain or ref:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/designx-studio/pocketcloud/main/deploy/install.sh | sudo POCKETCLOUD_DOMAIN=cloud.example.com POCKETCLOUD_REF=main bash
+```
 
 ## 🚀 Key Features
 
 - 🖥️ **Multi-VPS Fleet Management**: Pair any Linux VPS node with an outbound systemd agent.
 - 📊 **Real-time Telemetry & Metrics**: Monitor CPU, memory, disk usage, uptime, and load in a unified dashboard.
-- 🛠️ **Secure Dispatch Pipeline**: Execute maintenance actions (Docker installation, dev tools setup, package updates, system reboots) via an encrypted, agent-polled connection.
-- 📦 **Declarative Blueprints**: Capture complete environment manifests (installed packages, systemd services, env vars, cron jobs) with automatic secret redaction (`[REDACTED]`).
+- 🛠️ **Secure Dispatch Pipeline**: Execute maintenance actions via an encrypted, agent-polled connection.
+- 📦 **Declarative Blueprints**: Capture complete environment manifests with automatic secret redaction.
 - ⚡ **1-Click Migration**: Replicate or restore a blueprint onto any online server node instantly.
-- 🧠 **AI Diagnostics & Sanitizer**: Automatically scan, sanitize raw logs, and recommend solutions for infrastructure issues.
+- 🧠 **AI Diagnostics & Sanitizer**: Scan logs and recommend solutions for infrastructure issues.
 - 💾 **Disaster Recovery**: Export and import complete control plane states as portable JSON archives.
 
----
+## ⚙️ Local development
 
-## 🏗️ Architecture
-
-PocketCloud uses an outbound-only connection model. The agent running on target VPS nodes polls the control plane for tasks, eliminating the need to expose open ports or configure complex VPNs.
-
-```mermaid
-graph TD
-    Browser[Dashboard Client] -->|HTTPS / REST / WS| API[PocketCloud API Server]
-    API -->|SQLite / Postgres| DB[(Database)]
-    API -->|Cache / Queue| Redis[(Redis)]
-    Agent[PocketCloud Agent] -->|HTTPS Telemetry & Task Poll| API
+```bash
+cp .env.example .env
+npm install
+npm run db:push
+npm run dev
 ```
 
----
+Dashboard: `http://localhost:3000`, API: `http://localhost:8080`.
 
-## ⚙️ Quick Start
+## Running tests & verification
 
-### Local Development
-
-1. **Clone the repository and set up environment configuration:**
-   ```bash
-   cp .env.example .env
-   npm install
-   ```
-
-2. **Initialize the local development SQLite database:**
-   ```bash
-   npm run db:push
-   ```
-
-3. **Start the API server and frontend application:**
-   ```bash
-   npm run dev
-   ```
-   - Dashboard: `http://localhost:3000`
-   - API Server: `http://localhost:8080`
-
-### Running Tests & Verification
-
-Validate code quality, TypeScript definitions, and run all unit tests:
 ```bash
 npm run lint
 npm run build
 npm run test
 ```
 
----
-
 ## 📁 Repository Structure
 
-- `apps/api`: The primary Fastify API server, worker pipeline, database models, and agent communication layer.
-- `apps/web` (and root `index.html`): The premium Glassmorphism control panel client.
-- `agent`: The pocket-size agent binary written in Go with an automatic systemd installer.
-- `packages/blueprint`: Environment spec validator, parser, and secret sanitizer.
-- `deploy`: Docker Compose orchestration, Caddy reverse-proxy configuration, and production deployment scripts.
-- `docs`: Multi-page documentation covering [Architecture](docs/architecture.md), [API Reference](docs/api.md), [Security Policy](docs/security.md), and [Blueprint Spec](docs/blueprint-spec.md).
-
----
+- `apps/api`: Fastify API, workers, database models, and agent communication.
+- `apps/web` and root `index.html`: PocketCloud dashboard client.
+- `agent`: Linux agent and systemd installer.
+- `packages/blueprint`: Environment validator, parser, and secret sanitizer.
+- `deploy`: Docker Compose, Caddy, and production installer.
+- `docs`: Architecture, API, security, and blueprint documentation.
 
 ## 🔒 Security
 
-- **Agent Hardening**: Enforces systemd sandbox parameters (`NoNewPrivileges=true`, `ProtectSystem=strict`, etc.).
-- **Server Isolation**: Strict authorization validation prevents agents from accessing or modifying tasks that do not belong to their assigned `serverId`.
-- **Argon2id Hashing**: Standard password security using memory-hard Argon2id parameters.
-- **Audit Logging**: Fully compliant, immutable audit trails tracking all administrative actions (operator registration, node pair/unpair, task dispatch, backups).
-
----
+- Agent hardening with systemd sandbox parameters.
+- Strict server/task authorization.
+- Argon2id password hashing.
+- Immutable audit logging for administrative actions.
 
 ## 📄 License
 
