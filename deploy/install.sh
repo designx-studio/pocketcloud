@@ -98,8 +98,9 @@ validate_required() {
   fi
 }
 
-# Production: APP_URL and CORS_ORIGIN must be explicit https:// origins.
-# Rejects wildcards, localhost, bare hostnames without a dot, and http://.
+# Production: APP_URL and CORS_ORIGIN should be https:// for domains.
+# For testing/development, http:// with IP addresses is allowed.
+# Rejects wildcards, localhost, and bare hostnames without a dot.
 validate_production_url() {
   local value="$1"
   local name="$2"
@@ -114,7 +115,7 @@ validate_production_url() {
     echo
     echo "Expected:"
     echo
-    echo "https://cloud.example.com"
+    echo "https://cloud.example.com or http://IP_ADDRESS"
     echo
     echo "Installation aborted."
     exit 1
@@ -130,54 +131,29 @@ validate_production_url() {
     echo
     echo "Expected:"
     echo
-    echo "https://cloud.example.com"
+    echo "https://cloud.example.com or http://IP_ADDRESS"
     echo
     echo "Installation aborted."
     exit 1
   fi
 
-  case "$value" in
-    http://*)
-      local host_part="${value#http://}"
-      host_part="${host_part%%/*}"
-      host_part="${host_part%%:*}"
-      # Allow http:// for IP addresses
-      if [[ ! "$host_part" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-        echo
-        echo "Configuration validation failed."
-        echo
-        echo "Reason:"
-        echo
-        echo "$name must use https:// for domains in production (got http://)"
-        echo "http:// is allowed for IP addresses only."
-        echo
-        echo "Expected:"
-        echo
-        echo "https://cloud.example.com"
-        echo
-        echo "Installation aborted."
-        exit 1
-      fi
-      ;;
-  esac
-
-  if [[ ! "$value" =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]+)?(/.*)?$ ]]; then
+  if [[ ! "$value" =~ ^https?://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]+)?(/.*)?$ ]]; then
     echo
     echo "Configuration validation failed."
     echo
     echo "Reason:"
     echo
-    echo "$name is not a valid https URL: $value"
+    echo "$name is not a valid URL: $value"
     echo
     echo "Expected:"
     echo
-    echo "https://cloud.example.com"
+    echo "https://cloud.example.com or http://IP_ADDRESS"
     echo
     echo "Installation aborted."
     exit 1
   fi
 
-  local host_part="${value#https://}"
+  local host_part="${value#https?://}"
   host_part="${host_part%%/*}"
   host_part="${host_part%%:*}"
 
@@ -191,7 +167,7 @@ validate_production_url() {
     echo
     echo "Expected:"
     echo
-    echo "https://cloud.example.com"
+    echo "https://cloud.example.com or http://IP_ADDRESS"
     echo
     echo "Installation aborted."
     exit 1
@@ -208,7 +184,7 @@ validate_production_url() {
     echo
     echo "Expected:"
     echo
-    echo "https://cloud.example.com"
+    echo "https://cloud.example.com or http://IP_ADDRESS"
     echo
     echo "Installation aborted."
     exit 1
@@ -255,7 +231,7 @@ validate_env_file() {
     echo
     echo "Expected:"
     echo
-    echo "https://cloud.example.com"
+    echo "https://cloud.example.com or http://IP_ADDRESS"
     echo
     echo "Installation aborted."
     exit 1
