@@ -122,6 +122,22 @@ function bindEvents(){
     $('boxAgentInstallCmd')?.classList.add('hidden');
     loadServers();
   });
+
+  $('btnCopyInstallSection')?.addEventListener('click', () => {
+    const text = $('txtAgentInstallSectionCmd')?.textContent;
+    if (text) {
+      navigator.clipboard.writeText(text);
+      toast('Copied agent installation command!', 'success');
+    }
+  });
+
+  $('btnCopyControlPlaneInstall')?.addEventListener('click', () => {
+    const text = $('txtControlPlaneInstallCmd')?.textContent;
+    if (text) {
+      navigator.clipboard.writeText(text);
+      toast('Copied deploy command!', 'success');
+    }
+  });
 }
 document.addEventListener('DOMContentLoaded',()=>{
   bindEvents();
