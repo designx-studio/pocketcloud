@@ -23,7 +23,7 @@ case "$ARCH" in
   *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
 esac
 BINARY=/opt/pocketcloud-agent/pocketcloud-agent
-if ! curl --fail --silent --show-error --proto '=https' --tlsv1.2 "$CONTROL_PLANE/api/v1/agent/releases/$PLATFORM" -o "$BINARY"; then
+if ! curl --fail --silent --show-error --proto '=http,https' --tlsv1.2 "$CONTROL_PLANE/api/v1/agent/releases/$PLATFORM" -o "$BINARY"; then
   RELEASE_URL="https://github.com/designx-studio/pocketcloud/releases/latest/download/pocketcloud-agent-$PLATFORM"
   curl --fail --silent --show-error --proto '=https' --tlsv1.2 "$RELEASE_URL" -o "$BINARY"
 fi
