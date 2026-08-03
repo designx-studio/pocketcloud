@@ -1,22 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# PocketCloud one-command installer.
-# Public repo usage:
-#   curl -fsSL https://raw.githubusercontent.com/designx-studio/pocketcloud/main/deploy/install.sh | sudo bash
-# Private repo usage:
-#   GITHUB_TOKEN=... sudo -E bash deploy/install.sh
-# Custom domain:
-#   curl -fsSL ... | sudo POCKETCLOUD_DOMAIN=cloud.example.com bash
-
 REPO_URL="${POCKETCLOUD_REPO_URL:-https://github.com/designx-studio/pocketcloud.git}"
 REF="${POCKETCLOUD_REF:-main}"
 INSTALL_DIR="${POCKETCLOUD_INSTALL_DIR:-/opt/pocketcloud}"
-# Canonical environment file — every component must use this path.
 ENV_FILE="${INSTALL_DIR}/.env"
 COMPOSE_FILE="deploy/docker-compose.yml"
 
-log() { printf '\n[pocketcloud] %s\n' "$*"; }
+log() { printf '\n[pocketcloud] %s\n' "$*" >&2; }
 log_error() { printf '\n[pocketcloud] ERROR: %s\n' "$*" >&2; }
 fail() { printf '\n[pocketcloud] ERROR: %s\n' "$*" >&2; exit 1; }
 
@@ -53,196 +44,75 @@ fetch_source() {
   cp -a "$tmp/pocketcloud/." "$INSTALL_DIR/"
 }
 
-# Resolve a bare domain/IP (or full URL) to a production base URL.
-# Protocol already present → use as-is (trailing slash stripped).
-# Otherwise → https://<host> (or http:// for IP addresses)
 derive_app_url() {
   local host="$1"
   host="${host#"${host%%[![:space:]]*}"}"
   host="${host%"${host##*[![:space:]]}"}"
   host="${host%/}"
-  
   if [[ -z "$host" ]]; then
     printf 'http://localhost'
-    return
-  fi
-  
-  if [[ "$host" =~ ^https?:// ]]; then
+  elif [[ "$host" =~ ^https?:// ]]; then
     printf '%s' "$host"
+  elif [[ "$host" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    printf 'http://%s' "$host"
   else
-    # Use http:// for IP addresses, https:// for domains
-    if [[ "$host" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-      printf 'http://%s' "$host"
-    else
-      printf 'https://%s' "$host"
-    fi
+    printf 'https://%s' "$host"
   fi
 }
 
-# https://host → wss://host ; http://host → ws://host
 derive_ws_url() {
   local app_url="$1"
   case "$app_url" in
     https://*) printf 'wss://%s/ws' "${app_url#https://}" ;;
-    http://*)  printf 'ws://%s/ws'  "${app_url#http://}"  ;;
-    *)         printf 'wss://%s/ws' "$app_url" ;;
+    http://*) printf 'ws://%s/ws' "${app_url#http://}" ;;
+    *) printf 'wss://%s/ws' "$app_url" ;;
   esac
 }
 
 validate_required() {
-  local value="$1"
-  local name="$2"
-  if [ -z "$value" ]; then
-    echo
-    echo "Configuration validation failed."
-    echo
-    echo "Reason:"
-    echo
-    echo "Missing required variable: $name"
-    echo
-    echo "Installation aborted."
-    exit 1
-  fi
+  local value="$1" name="$2"
+  [[ -n "$value" ]] || fail "Missing required variable: $name"
 }
 
-# Production: APP_URL and CORS_ORIGIN should be https:// for domains.
-# For testing/development, http:// with IP addresses is allowed.
-# Rejects wildcards, localhost, and bare hostnames without a dot.
 validate_production_url() {
-  local value="$1"
-  local name="$2"
-
-  if [ -z "$value" ]; then
-    echo
-    echo "Configuration validation failed."
-    echo
-    echo "Reason:"
-    echo
-    echo "$name is empty"
-    echo
-    echo "Expected:"
-    echo
-    echo "https://cloud.example.com or http://IP_ADDRESS"
-    echo
-    echo "Installation aborted."
-    exit 1
-  fi
-
-  if [ "$value" = "*" ]; then
-    echo
-    echo "Configuration validation failed."
-    echo
-    echo "Reason:"
-    echo
-    echo "$name cannot be '*'"
-    echo
-    echo "Expected:"
-    echo
-    echo "https://cloud.example.com or http://IP_ADDRESS"
-    echo
-    echo "Installation aborted."
-    exit 1
-  fi
-
-  if [[ ! "$value" =~ ^https?://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]+)?(/.*)?$ ]]; then
-    echo
-    echo "Configuration validation failed."
-    echo
-    echo "Reason:"
-    echo
-    echo "$name is not a valid URL: $value"
-    echo
-    echo "Expected:"
-    echo
-    echo "https://cloud.example.com or http://IP_ADDRESS"
-    echo
-    echo "Installation aborted."
-    exit 1
-  fi
-
-  local host_part="${value#https?://}"
+  local value="$1" name="$2" host_part
+  case "$value" in
+    https://*) host_part="${value#https://}" ;;
+    http://*) host_part="${value#http://}" ;;
+    *) fail "$name is not a valid URL: $value" ;;
+  esac
+  [[ "$value" =~ ^https?://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]+)?(/.*)?$ ]] || fail "$name is not a valid URL: $value"
   host_part="${host_part%%/*}"
   host_part="${host_part%%:*}"
-
-  if [ "$host_part" = "localhost" ] || [ "$host_part" = "127.0.0.1" ] || [ "$host_part" = "::1" ]; then
-    echo
-    echo "Configuration validation failed."
-    echo
-    echo "Reason:"
-    echo
-    echo "$name cannot use localhost in production: $value"
-    echo
-    echo "Expected:"
-    echo
-    echo "https://cloud.example.com or http://IP_ADDRESS"
-    echo
-    echo "Installation aborted."
-    exit 1
-  fi
-
-  # Reject bare labels like "example" (no dot) unless it is a dotted IPv4 address.
-  if [[ ! "$host_part" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && [[ ! "$host_part" =~ \. ]]; then
-    echo
-    echo "Configuration validation failed."
-    echo
-    echo "Reason:"
-    echo
-    echo "$name host must be a fully-qualified domain or IP: $host_part"
-    echo
-    echo "Expected:"
-    echo
-    echo "https://cloud.example.com or http://IP_ADDRESS"
-    echo
-    echo "Installation aborted."
-    exit 1
+  [[ "$host_part" != "localhost" && "$host_part" != "127.0.0.1" && "$host_part" != "::1" ]] || fail "$name cannot use localhost in production: $value"
+  if [[ ! "$host_part" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ && ! "$host_part" =~ \. ]]; then
+    fail "$name host must be a fully-qualified domain or IP: $host_part"
   fi
 }
 
 read_env_value() {
-  local key="$1"
-  local file="$2"
-  # shellcheck disable=SC2002
+  local key="$1" file="$2"
   grep -E "^${key}=" "$file" 2>/dev/null | head -n1 | cut -d= -f2- || true
 }
 
 validate_env_file() {
-  local file="$1"
-  local app_url cors_origin database_url postgres_password jwt_secret encryption_key
-
+  local file="$1" app_url cors_origin database_url postgres_password jwt_secret encryption_key
   [[ -f "$file" ]] || fail "Environment file not found: $file"
-
   app_url="$(read_env_value APP_URL "$file")"
   cors_origin="$(read_env_value CORS_ORIGIN "$file")"
   database_url="$(read_env_value DATABASE_URL "$file")"
   postgres_password="$(read_env_value POSTGRES_PASSWORD "$file")"
   jwt_secret="$(read_env_value JWT_SECRET "$file")"
   encryption_key="$(read_env_value ENCRYPTION_KEY "$file")"
-
-  validate_required "$app_url" "APP_URL"
-  validate_required "$cors_origin" "CORS_ORIGIN"
-  validate_required "$database_url" "DATABASE_URL"
-  validate_required "$postgres_password" "POSTGRES_PASSWORD"
-  validate_required "$jwt_secret" "JWT_SECRET"
-  validate_required "$encryption_key" "ENCRYPTION_KEY"
-
-  validate_production_url "$app_url" "APP_URL"
-  validate_production_url "$cors_origin" "CORS_ORIGIN"
-
-  if [ "$cors_origin" = "*" ]; then
-    echo
-    echo "Configuration validation failed."
-    echo
-    echo "Reason:"
-    echo
-    echo "CORS_ORIGIN cannot be '*'"
-    echo
-    echo "Expected:"
-    echo
-    echo "https://cloud.example.com or http://IP_ADDRESS"
-    echo
-    echo "Installation aborted."
-    exit 1
-  fi
+  validate_required "$app_url" APP_URL
+  validate_required "$cors_origin" CORS_ORIGIN
+  validate_required "$database_url" DATABASE_URL
+  validate_required "$postgres_password" POSTGRES_PASSWORD
+  validate_required "$jwt_secret" JWT_SECRET
+  validate_required "$encryption_key" ENCRYPTION_KEY
+  validate_production_url "$app_url" APP_URL
+  validate_production_url "$cors_origin" CORS_ORIGIN
+  [[ "$cors_origin" != "*" ]] || fail "CORS_ORIGIN cannot be '*'"
 }
 
 prompt_domain() {
@@ -255,32 +125,25 @@ prompt_domain() {
     log_error "Detecting public IP address..."
     domain="$(curl -4fsSL --max-time 10 https://api.ipify.org 2>/dev/null || true)"
   fi
-  # Fallback to local IP detection if ipify fails
   if [[ -z "$domain" ]]; then
     log_error "ipify failed, using local IP detection..."
     domain="$(hostname -I 2>/dev/null | awk '{print $1}' || ip route get 1 2>/dev/null | awk '{print $7}' || true)"
   fi
-  # Final fallback to localhost
-  if [[ -z "$domain" ]]; then
-    log_error "IP detection failed, using localhost..."
-    domain="localhost"
-  fi
-  # Clean up the domain value - remove whitespace and trailing slash
+  [[ -n "$domain" ]] || fail "Could not determine the public host. Set POCKETCLOUD_DOMAIN and retry."
   domain="${domain#"${domain%%[![:space:]]*}"}"
   domain="${domain%"${domain##*[![:space:]]}"}"
+  case "$domain" in
+    https://*) domain="${domain#https://}" ;;
+    http://*) domain="${domain#http://}" ;;
+  esac
+  domain="${domain%%/*}"
   domain="${domain%/}"
-  # Strip scheme if the operator pasted a full URL into POCKETCLOUD_DOMAIN
-  # so derive_app_url can re-apply https consistently when bare host given.
-  [[ -n "$domain" ]] || fail "Could not determine the public host. Set POCKETCLOUD_DOMAIN=cloud.example.com and retry."
   log_error "Using domain: $domain"
   printf '%s' "$domain"
 }
 
 generate_env() {
-  local public_host app_url api_url ws_url cors_origin
-  local db_password jwt_secret refresh_secret encryption_key
-
-  # Respect existing APP_URL if set
+  local public_host app_url api_url ws_url cors_origin db_password jwt_secret refresh_secret encryption_key domain_only
   if [[ -n "${APP_URL:-}" ]]; then
     app_url="$APP_URL"
     log "Using provided APP_URL: $app_url"
@@ -288,34 +151,24 @@ generate_env() {
     public_host="$(prompt_domain)"
     app_url="$(derive_app_url "$public_host")"
   fi
-  
-  # Host portion for Caddy / POCKETCLOUD_DOMAIN (no scheme)
-  local domain_only="${app_url#https://}"
+  domain_only="${app_url#https://}"
   domain_only="${domain_only#http://}"
   domain_only="${domain_only%%/*}"
-
   api_url="${app_url}/api"
   ws_url="$(derive_ws_url "$app_url")"
   cors_origin="$app_url"
-
+  printf 'DOMAIN=<%s>\nAPP_URL=<%s>\nCORS_ORIGIN=<%s>\n' "$domain_only" "$app_url" "$cors_origin"
   if [[ -f "$ENV_FILE" ]]; then
     log "Using existing configuration at $ENV_FILE"
     validate_env_file "$ENV_FILE"
-    # Keep deploy/.env in sync with the canonical file for compose relative paths
     ln -sfn ../.env "$INSTALL_DIR/deploy/.env"
     return
   fi
-
-  echo
-  echo "Generating configuration..."
-  echo
-
   umask 077
   db_password="$(openssl rand -hex 32)"
   jwt_secret="$(openssl rand -hex 64)"
   refresh_secret="$(openssl rand -hex 64)"
   encryption_key="$(openssl rand -hex 32)"
-
   cat > "$ENV_FILE" <<EOF
 NODE_ENV=production
 PORT=8080
@@ -332,43 +185,14 @@ REFRESH_TOKEN_SECRET=${refresh_secret}
 ENCRYPTION_KEY=${encryption_key}
 EOF
   chmod 600 "$ENV_FILE"
-  # Docker Compose resolves env_file relative to the compose file directory.
   ln -sfn ../.env "$INSTALL_DIR/deploy/.env"
-
-  # Validate the generated configuration before proceeding
   validate_env_file "$ENV_FILE"
-
-  echo "APP_URL:"
-  echo "$app_url"
-  echo
-  echo "API_URL:"
-  echo "$api_url"
-  echo
-  echo "WS_URL:"
-  echo "$ws_url"
-  echo
-  echo "Database:"
-  echo "Configured"
-  echo
-  echo "JWT:"
-  echo "Generated"
-  echo
-  echo "Encryption:"
-  echo "Generated"
-  echo
-  echo "CORS:"
-  echo "$cors_origin"
-  echo
-  echo "Configuration valid"
-  echo
-  echo "Environment file: $ENV_FILE"
-  echo
+  log "Configuration valid"
 }
 
 start_stack() {
   cd "$INSTALL_DIR"
-  echo "Starting PocketCloud..."
-  echo
+  log "Starting PocketCloud"
   docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build
   docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
 }
