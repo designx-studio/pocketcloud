@@ -14,10 +14,26 @@ const SUPPORTED_PLATFORMS: Record<string, string> = {
 const app = Fastify({ logger: true });
 
 function safeReleasePath(filename: string): string | null {
+  const candidateDirs = [
+    process.env.AGENT_RELEASES_DIR,
+    '/opt/pocketcloud/agent-releases',
+    '/app/agent-releases',
+    './agent-releases',
+    '../agent-releases'
+  ].filter(Boolean) as string[];
+
+  for (const dir of candidateDirs) {
+    const root = resolve(dir);
+    const candidate = resolve(join(root, filename));
+    const rel = relative(root, candidate);
+    if (rel && !rel.startsWith('..') && !rel.includes('/') && existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
   const root = resolve(RELEASES_DIR);
   const candidate = resolve(join(root, filename));
-  const rel = relative(root, candidate);
-  return rel && !rel.startsWith('..') && !rel.includes('/') ? candidate : null;
+  return candidate;
 }
 
 function getGitHubReleaseUrl(platform: string): string {

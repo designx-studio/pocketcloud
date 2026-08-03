@@ -23,7 +23,7 @@ FROM node:20-alpine
 RUN apk add --no-cache openssl
 WORKDIR /app
 RUN addgroup -S pocketcloud && adduser -S pocketcloud -G pocketcloud
-RUN mkdir -p /opt/pocketcloud/agent-releases
+RUN mkdir -p /opt/pocketcloud/agent-releases /app/agent-releases
 COPY --from=build /app/apps/api/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/agent ./agent
@@ -31,7 +31,8 @@ COPY --from=build /app/apps/api/prisma ./prisma
 COPY --from=build /app/apps/api/entrypoint.sh ./entrypoint.sh
 COPY --from=build /app/packages/blueprint ./packages/blueprint
 COPY --from=agent-build /out/ /opt/pocketcloud/agent-releases/
-RUN chmod +x ./entrypoint.sh /opt/pocketcloud/agent-releases/* && chown -R pocketcloud:pocketcloud /app /opt/pocketcloud/agent-releases
+COPY --from=agent-build /out/ /app/agent-releases/
+RUN chmod +x ./entrypoint.sh /opt/pocketcloud/agent-releases/* /app/agent-releases/* && chown -R pocketcloud:pocketcloud /app /opt/pocketcloud/agent-releases
 USER pocketcloud
 ENTRYPOINT ["./entrypoint.sh"]
 CMD ["node","dist/server.js"]
