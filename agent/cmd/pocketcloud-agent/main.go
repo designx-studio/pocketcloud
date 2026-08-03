@@ -159,6 +159,27 @@ func executeTask(c *http.Client, controlPlane, token string, t Task) {
 	var finalMsg   string
 
 	switch t.Type {
+	case "exec", "run_command":
+		var payload struct {
+			Command string `json:"command"`
+			Cmd     string `json:"cmd"`
+		}
+		_ = json.Unmarshal(t.Payload, &payload)
+		command := payload.Command
+		if command == "" {
+			command = payload.Cmd
+		}
+		if command == "" {
+			finalStatus = "FAILED"
+			finalMsg = "No command specified in task payload"
+		} else {
+			sendTaskLog(c, controlPlane, token, t.ID, "INFO", fmt.Sprintf("Running command: %s", command))
+			out, err := runCmd("sh", "-c", command)
+			finalMsg = trimOutput(out, err, "exec")
+			if err != nil {
+				finalStatus = "FAILED"
+			}
+		}
 	case "update_packages":
 		out, err := runCmd("sh", "-c", "apt-get update -qq && apt-get upgrade -y -qq 2>&1 | tail -5")
 		finalMsg = trimOutput(out, err, "update_packages")
