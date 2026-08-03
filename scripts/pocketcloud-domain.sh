@@ -35,7 +35,7 @@ ENCRYPTION_KEY=$ENCRYPTION_KEY
 EOF
 
 cat > "$INSTALL_DIR/deploy/Caddyfile" <<EOF
-$APP_URL {
+$DOMAIN {
   encode gzip zstd
   @agent-releases path /api/v1/agent/releases/* /api/v1/agent/releases
   handle @agent-releases { reverse_proxy agent-registry:8081 }

@@ -1,3 +1,7 @@
+{
+  auto_https off
+}
+
 (routing) {
   encode gzip zstd
 
@@ -26,6 +30,6 @@
   }
 }
 
-{$APP_URL} {
+:80 {
   import routing
 }

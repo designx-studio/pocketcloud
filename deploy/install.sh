@@ -94,10 +94,14 @@ determine_app_url() {
 }
 
 write_caddyfile() {
-  local app_url="$1" options=""
-  [[ "$app_url" == http://* ]] && options=$'{\n  auto_https off\n}\n\n'
+  local app_url="$1" site_address=":80" options=""
+  if [[ "$app_url" == https://* ]]; then
+    site_address="${app_url#https://}"
+  else
+    options=$'{\n  auto_https off\n}\n\n'
+  fi
   cat > "$INSTALL_DIR/deploy/Caddyfile" <<EOF
-${options}${app_url} {
+${options}${site_address} {
   encode gzip zstd
   @agent-releases path /api/v1/agent/releases/* /api/v1/agent/releases
   handle @agent-releases { reverse_proxy agent-registry:8081 }
