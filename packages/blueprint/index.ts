@@ -36,10 +36,10 @@ export const BlueprintManifestSchema = z.object({
   version: z.string().default('1.1'),
   blueprint: z.object({
     name: z.string().min(1).max(120),
-    os: z.string().nullable().optional().transform(v => v || 'linux'),
-    architecture: z.string().nullable().optional().transform(v => v || 'x86_64'),
-    captured_from: z.string().nullable().optional().transform(v => v || 'vps'),
-    captured_at: z.string().nullable().optional().transform(v => v || new Date().toISOString())
+    os: z.union([z.string(), z.null()]).optional().transform(v => v || 'linux'),
+    architecture: z.union([z.string(), z.null()]).optional().transform(v => v || 'x86_64'),
+    captured_from: z.union([z.string(), z.null()]).optional().transform(v => v || 'vps'),
+    captured_at: z.union([z.string(), z.null()]).optional().transform(v => v || new Date().toISOString())
   }),
   system: z.object({
     packages: z.array(z.string()).default([]),
