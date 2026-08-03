@@ -14,8 +14,6 @@ services:
     command: [redis-server, --appendonly, yes]
     volumes: [../storage/redis:/data]
     healthcheck: { test: [CMD, redis-cli, ping], interval: 10s, timeout: 3s, retries: 5 }
-  # env_file paths are relative to this compose file (deploy/).
-  # Canonical secrets live at /opt/pocketcloud/.env (repo root .env in local/dev).
   api:
     build: { context: .., dockerfile: deploy/Dockerfile.api }
     restart: unless-stopped
@@ -55,7 +53,6 @@ services:
     restart: unless-stopped
     command: [node, dist/agent-registry.js]
     env_file: ../.env
-    volumes: [../agent-releases:/opt/pocketcloud/agent-releases:ro]
     depends_on: { api: { condition: service_healthy } }
     healthcheck: { test: [CMD-SHELL, 'wget -qO- http://127.0.0.1:8081/api/v1/agent/releases || exit 1'], interval: 30s, timeout: 10s, retries: 3, start_period: 10s }
   dashboard:

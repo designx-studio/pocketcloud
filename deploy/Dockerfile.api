@@ -1,3 +1,12 @@
+FROM golang:1.23-alpine AS agent-build
+WORKDIR /agent
+COPY agent/go.mod agent/go.sum* ./
+COPY agent ./
+RUN mkdir -p /out \
+  && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/pocketcloud-agent-linux-x86_64 ./cmd/pocketcloud-agent \
+  && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /out/pocketcloud-agent-linux-aarch64 ./cmd/pocketcloud-agent \
+  && CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -o /out/pocketcloud-agent-linux-armv7l ./cmd/pocketcloud-agent
+
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package.json ./
@@ -6,6 +15,7 @@ COPY packages/blueprint/package.json packages/blueprint/
 RUN npm install
 COPY packages/blueprint packages/blueprint
 COPY apps/api apps/api
+COPY agent agent
 RUN npx prisma generate --schema=apps/api/prisma/schema.prisma
 RUN npm run build -w apps/api
 
@@ -13,12 +23,15 @@ FROM node:20-alpine
 RUN apk add --no-cache openssl
 WORKDIR /app
 RUN addgroup -S pocketcloud && adduser -S pocketcloud -G pocketcloud
+RUN mkdir -p /opt/pocketcloud/agent-releases
 COPY --from=build /app/apps/api/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
-COPY apps/api/prisma ./prisma
-COPY apps/api/entrypoint.sh ./entrypoint.sh
-COPY packages/blueprint ./packages/blueprint
-RUN chmod +x ./entrypoint.sh && chown -R pocketcloud:pocketcloud /app
+COPY --from=build /app/agent ./agent
+COPY --from=build /app/apps/api/prisma ./prisma
+COPY --from=build /app/apps/api/entrypoint.sh ./entrypoint.sh
+COPY --from=build /app/packages/blueprint ./packages/blueprint
+COPY --from=agent-build /out/ /opt/pocketcloud/agent-releases/
+RUN chmod +x ./entrypoint.sh /opt/pocketcloud/agent-releases/* && chown -R pocketcloud:pocketcloud /app /opt/pocketcloud/agent-releases
 USER pocketcloud
 ENTRYPOINT ["./entrypoint.sh"]
 CMD ["node","dist/server.js"]
