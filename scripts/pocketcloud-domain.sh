@@ -38,13 +38,24 @@ cat > "$INSTALL_DIR/deploy/Caddyfile" <<EOF
 $DOMAIN {
   encode gzip zstd
   @agent-releases path /api/v1/agent/releases/* /api/v1/agent/releases
-  handle @agent-releases { reverse_proxy agent-registry:8081 }
+  handle @agent-releases {
+    reverse_proxy agent-registry:8081
+  }
   @settings path /api/v1/settings /api/v1/settings/*
-  handle @settings { reverse_proxy settings:8082 }
-  @api path /api/* /health /docs/* /install-agent.sh
-  handle @api { reverse_proxy api:8080 }
-  handle { reverse_proxy dashboard:80 }
-  header { -Server -X-Powered-By }
+  handle @settings {
+    reverse_proxy settings:8082
+  }
+  @api path /api/* /health /docs/*
+  handle @api {
+    reverse_proxy api:8080
+  }
+  handle {
+    reverse_proxy dashboard:80
+  }
+  header {
+    -Server
+    -X-Powered-By
+  }
 }
 EOF
 
