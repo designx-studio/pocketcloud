@@ -439,8 +439,8 @@ func main() {
 		log.Printf("[INFO] Paired! Agent ID: %s | Server ID: %s", regResp.AgentID, regResp.ServerID)
 	}
 
-	heartbeatTicker := time.NewTicker(10 * time.Second)
-	taskPollTicker  := time.NewTicker(10 * time.Second)
+	heartbeatTicker := time.NewTicker(5 * time.Second)
+	taskPollTicker  := time.NewTicker(5 * time.Second)
 	defer heartbeatTicker.Stop()
 	defer taskPollTicker.Stop()
 

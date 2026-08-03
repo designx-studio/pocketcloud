@@ -124,3 +124,4 @@ apps/api/dist/
 apps/node_modules/
 package-lock.json
 node_modules
+*.pem
