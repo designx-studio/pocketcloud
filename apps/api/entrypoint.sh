@@ -2,7 +2,7 @@
 set -eu
 
 # Surface migration failures clearly before the API process starts.
-if ! npx prisma migrate deploy; then
+if ! npx prisma migrate deploy --schema=prisma/schema.prisma; then
   echo ""
   echo "PocketCloud failed to start."
   echo ""
