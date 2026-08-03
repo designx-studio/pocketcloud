@@ -314,8 +314,33 @@ app.get('/api/v1/auth/me', async (req) => {
   return { id: user.id, email: user.email, role: user.role };
 });
 
-const getAgentInstallCommand = (token: string): string => {
-  const appUrl = (config.APP_URL || 'http://localhost:8080').replace(/\/+$/, '');
+const getAgentInstallCommand = (req: any, token: string): string => {
+  let appUrl = config.APP_URL?.trim();
+
+  // If APP_URL is missing or contains placeholder host, fall back dynamically to request headers
+  const isPlaceholder = !appUrl || /your-domain|example\.com|localhost|127\.0\.0\.1/i.test(appUrl);
+
+  if (isPlaceholder && req?.headers) {
+    const headers: any = req.headers;
+    const rawHost = String(headers['x-forwarded-host'] || headers['host'] || '');
+    const firstHost = rawHost.split(',')[0] ?? '';
+    const host = firstHost.trim();
+    if (host) {
+      const protoHeader = headers['x-forwarded-proto'];
+      const rawProto = protoHeader ? String(protoHeader).split(',')[0] ?? '' : '';
+      const forwardedProto = rawProto.trim() || undefined;
+      const hostPart = (host.split(':')[0] ?? '').trim();
+      const isIPOrLocalhost = hostPart === 'localhost' || /^[0-9.]+$/.test(hostPart);
+      const scheme = forwardedProto || (isIPOrLocalhost ? 'http' : 'https');
+      appUrl = `${scheme}://${host}`;
+    }
+  }
+
+  if (!appUrl) {
+    appUrl = 'http://localhost:8080';
+  }
+
+  appUrl = appUrl.replace(/\/+$/, '');
   return `curl -fsSL ${appUrl}/install-agent.sh | bash -s -- --token ${token} --control-plane ${appUrl}`;
 };
 
@@ -378,7 +403,7 @@ app.post('/api/v1/servers', async (req, reply) => {
   return reply.code(201).send({
     server,
     bootstrapToken: rawToken,
-    installCommand: getAgentInstallCommand(rawToken)
+    installCommand: getAgentInstallCommand(req, rawToken)
   });
 });
 
@@ -402,7 +427,7 @@ app.post('/api/v1/servers/:id/bootstrap-token', async (req, reply) => {
 
   return {
     bootstrapToken: rawToken,
-    installCommand: getAgentInstallCommand(rawToken)
+    installCommand: getAgentInstallCommand(req, rawToken)
   };
 });
 

@@ -21,8 +21,20 @@ describe('Server Nodes & Bootstrap Tokens', () => {
 
   it('generates agent installation command using APP_URL for Production (https://domain)', () => {
     const token = 'test-token-456';
-    const appUrl = 'https://cloud.example.com'.replace(/\/+$/, '');
+    const appUrl = 'https://cloud.mycompany.com'.replace(/\/+$/, '');
     const cmd = `curl -fsSL ${appUrl}/install-agent.sh | bash -s -- --token ${token} --control-plane ${appUrl}`;
-    expect(cmd).toBe('curl -fsSL https://cloud.example.com/install-agent.sh | bash -s -- --token test-token-456 --control-plane https://cloud.example.com');
+    expect(cmd).toBe('curl -fsSL https://cloud.mycompany.com/install-agent.sh | bash -s -- --token test-token-456 --control-plane https://cloud.mycompany.com');
+  });
+
+  it('detects request headers dynamically when APP_URL contains a placeholder (your-domain.com)', () => {
+    const req = { headers: { host: '203.0.113.50:8080' } };
+    const rawHost = req.headers.host;
+    const hostPart = rawHost.split(':')[0] ?? '';
+    const isIPOrLocalhost = hostPart === 'localhost' || /^[0-9.]+$/.test(hostPart);
+    const scheme = isIPOrLocalhost ? 'http' : 'https';
+    const appUrl = `${scheme}://${rawHost}`;
+    const token = 'token-789';
+    const cmd = `curl -fsSL ${appUrl}/install-agent.sh | bash -s -- --token ${token} --control-plane ${appUrl}`;
+    expect(cmd).toBe('curl -fsSL http://203.0.113.50:8080/install-agent.sh | bash -s -- --token token-789 --control-plane http://203.0.113.50:8080');
   });
 });
