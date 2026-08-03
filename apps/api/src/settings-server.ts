@@ -13,7 +13,7 @@ app.addHook('preHandler', async (req, reply) => {
   if (!header?.startsWith('Bearer ')) return reply.code(401).send({ error: 'unauthorized' });
   try {
     const auth = await verifyAccess(header.slice(7));
-    if (auth.role === 'VIEWER') return reply.code(403).send({ error: 'forbidden', message: 'Administrator access is required.' });
+    if (req.method !== 'GET' && auth.role === 'VIEWER') return reply.code(403).send({ error: 'forbidden', message: 'Administrator access is required.' });
     (req as any).auth = auth;
   } catch {
     return reply.code(401).send({ error: 'invalid_token' });
