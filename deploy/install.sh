@@ -110,7 +110,7 @@ ${app_url} {
   handle @agent-releases { reverse_proxy agent-registry:8081 }
   @settings path /api/v1/settings /api/v1/settings/*
   handle @settings { reverse_proxy settings:8082 }
-  @api path /api/* /health /docs/*
+  @api path /api/* /health /docs/* /install-agent.sh
   handle @api { reverse_proxy api:8080 }
   handle { reverse_proxy dashboard:80 }
   header { -Server -X-Powered-By }

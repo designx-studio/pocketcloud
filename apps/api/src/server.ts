@@ -12,6 +12,13 @@ import { hashPassword, verifyPassword, signAccess, randomToken, hashToken } from
 import { sanitizeEnvironment, parseBlueprintManifest, validateCompatibility } from '@pocketcloud/blueprint';
 import { toJsonField, fromJsonField, isSQLite } from './db-compat.js';
 
+import { readFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { resolve, dirname } from 'node:path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 const prisma = new PrismaClient();
 const app = Fastify({ logger: true, bodyLimit: 2 * 1024 * 1024 });
 
@@ -47,6 +54,32 @@ app.get('/health', async () => ({
   version: '1.1.0',
   time: new Date().toISOString()
 }));
+
+// Agent installer script endpoint
+app.get('/install-agent.sh', async (_req, reply) => {
+  const possiblePaths = [
+    resolve(__dirname, '../../../agent/install-agent.sh'),
+    resolve(__dirname, '../../agent/install-agent.sh'),
+    resolve(__dirname, '../agent/install-agent.sh'),
+    '/opt/pocketcloud/agent/install-agent.sh',
+    './agent/install-agent.sh'
+  ];
+
+  let scriptContent = '';
+  for (const p of possiblePaths) {
+    if (existsSync(p)) {
+      scriptContent = readFileSync(p, 'utf8');
+      break;
+    }
+  }
+
+  if (!scriptContent) {
+    return reply.code(404).send({ error: 'install_script_not_found' });
+  }
+
+  reply.header('Content-Type', 'text/x-shellscript; charset=utf-8');
+  return reply.send(scriptContent);
+});
 
 // AUTHENTICATION ENDPOINTS
 app.post('/api/v1/auth/register', async (req, reply) => {
@@ -262,6 +295,7 @@ app.post('/api/v1/auth/logout', async (req, reply) => {
 app.addHook('preHandler', async (req, reply) => {
   const open = [
     '/health',
+    '/install-agent.sh',
     '/api/v1/auth/login',
     '/api/v1/auth/register',
     '/api/v1/auth/demo',
