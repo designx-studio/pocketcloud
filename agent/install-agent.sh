@@ -32,7 +32,11 @@ esac
 BINARY=/opt/pocketcloud-agent/pocketcloud-agent
 if ! curl --fail --silent --show-error --proto '=http,https' --tlsv1.2 "$CONTROL_PLANE/api/v1/agent/releases/$PLATFORM" -o "$BINARY"; then
   RELEASE_URL="https://github.com/designx-studio/pocketcloud/releases/download/v1.1.0/pocketcloud-agent-$PLATFORM"
-  curl --fail --silent --show-error --proto '=https' --tlsv1.2 "$RELEASE_URL" -o "$BINARY"
+  if ! curl --fail --silent --show-error --proto '=https' --tlsv1.2 "$RELEASE_URL" -o "$BINARY"; then
+    echo "[pocketcloud-agent] ERROR: Agent binary pocketcloud-agent-$PLATFORM not found on control plane or GitHub releases." >&2
+    echo "[pocketcloud-agent] Ensure /opt/pocketcloud/agent-releases/pocketcloud-agent-$PLATFORM exists on the control plane server." >&2
+    exit 1
+  fi
 fi
 chmod 0750 "$BINARY"
 cat >/etc/pocketcloud/config.env <<EOF
