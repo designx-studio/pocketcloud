@@ -1,7 +1,7 @@
 // PostgreSQL schema
 
 generator client {
-  provider      = "prisma-client-js"
+  provider = "prisma-client-js"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
@@ -71,7 +71,7 @@ model BootstrapToken {
   tokenHash  String    @unique
   expiresAt  DateTime
   usedAt     DateTime?
-  createdAt  DateTime  @default(now())
+  createdAt  DateTime   @default(now())
 }
 
 model Task {
@@ -112,7 +112,7 @@ model BlueprintVersion {
   blueprintId String
   blueprint   Blueprint @relation(fields: [blueprintId], references: [id], onDelete: Cascade)
   version     Int
-  manifest    String
+  manifest    Json
   checksum    String
   createdAt   DateTime  @default(now())
 
@@ -145,15 +145,15 @@ model Heartbeat {
 }
 
 model AuditLog {
-  id         String   @id @default(uuid())
-  userId     String?
-  user       User?    @relation(fields: [userId], references: [id])
-  action     String
-  resource   String
-  resourceId String?
-  metadata   String?
-  ipAddress  String?
-  createdAt  DateTime @default(now())
+  id          String   @id @default(uuid())
+  userId      String?
+  user         User?    @relation(fields: [userId], references: [id])
+  action      String
+  resource    String
+  resourceId  String?
+  metadata    String?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
 
   @@index([createdAt])
 }
