@@ -44,6 +44,15 @@ install_docker() {
   docker compose version >/dev/null 2>&1 || fail "Docker Compose plugin was not installed"
 }
 
+configure_firewall() {
+  if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
+    log "Configuring ufw firewall rules to allow ports 80 and 443"
+    ufw allow 80/tcp >/dev/null 2>&1 || true
+    ufw allow 443/tcp >/dev/null 2>&1 || true
+    ufw allow 22/tcp >/dev/null 2>&1 || true
+  fi
+}
+
 fetch_source() {
   local tmp clone_url
   tmp="$(mktemp -d)"
@@ -178,5 +187,5 @@ wait_for_stack() {
 }
 start_stack() { cd "$INSTALL_DIR"; docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build; wait_for_stack; docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps; }
 
-install_docker; fetch_source; FINAL_APP_URL="$(determine_app_url)"; generate_env "$FINAL_APP_URL"; start_stack
+install_docker; configure_firewall; fetch_source; FINAL_APP_URL="$(determine_app_url)"; generate_env "$FINAL_APP_URL"; start_stack
 log "PocketCloud is ready"; printf 'Dashboard: %s\nAPI: %s\nConfig: %s\n' "$FINAL_APP_URL" "${FINAL_APP_URL}/api" "$ENV_FILE"
