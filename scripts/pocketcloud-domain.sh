@@ -48,6 +48,7 @@ $APP_URL {
 }
 EOF
 
+if [[ -f "$INSTALL_DIR/index.html" ]]; then sed -i '/Running in Quick Start Mode/d' "$INSTALL_DIR/index.html"; fi
 cd "$INSTALL_DIR"
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --force-recreate caddy
 echo "PocketCloud domain upgraded to $APP_URL"
