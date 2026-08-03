@@ -23,7 +23,7 @@ cd "$INSTALL_DIR"
 echo "[pocketcloud] Waiting for PostgreSQL..."
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d database
 for _ in {1..30}; do
-  if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T database pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; then break; fi
+  if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T database pg_isready -U postgres >/dev/null 2>&1; then break; fi
   sleep 2
 done
 
