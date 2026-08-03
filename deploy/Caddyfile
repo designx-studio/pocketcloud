@@ -11,7 +11,7 @@
     reverse_proxy settings:8082
   }
 
-  @api path /api/* /health /docs/* /install-agent.sh
+  @api path /api/* /health /docs/*
   handle @api {
     reverse_proxy api:8080
   }
