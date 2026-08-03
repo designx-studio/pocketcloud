@@ -128,7 +128,17 @@ generate_env() {
   local app_url="$1" api_url ws_url domain_only db_password jwt_secret refresh_secret encryption_key
   domain_only="${app_url#https://}"; domain_only="${domain_only#http://}"; api_url="${app_url}/api"; [[ "$app_url" == https://* ]] && ws_url="wss://${domain_only}/ws" || ws_url="ws://${domain_only}/ws"
   printf 'DOMAIN=<%s>\nAPP_URL=<%s>\nCORS_ORIGIN=<%s>\n' "$domain_only" "$app_url" "$app_url"
-  umask 077; db_password="$(openssl rand -hex 32)"; jwt_secret="$(openssl rand -hex 64)"; refresh_secret="$(openssl rand -hex 64)"; encryption_key="$(openssl rand -hex 32)"
+  umask 077
+  if [[ -f "$ENV_FILE" ]]; then
+    db_password="$(grep -E '^POSTGRES_PASSWORD=' "$ENV_FILE" | head -n1 | cut -d= -f2- || true)"
+    jwt_secret="$(grep -E '^JWT_SECRET=' "$ENV_FILE" | head -n1 | cut -d= -f2- || true)"
+    refresh_secret="$(grep -E '^REFRESH_TOKEN_SECRET=' "$ENV_FILE" | head -n1 | cut -d= -f2- || true)"
+    encryption_key="$(grep -E '^ENCRYPTION_KEY=' "$ENV_FILE" | head -n1 | cut -d= -f2- || true)"
+  fi
+  db_password="${db_password:-$(openssl rand -hex 32)}"
+  jwt_secret="${jwt_secret:-$(openssl rand -hex 64)}"
+  refresh_secret="${refresh_secret:-$(openssl rand -hex 64)}"
+  encryption_key="${encryption_key:-$(openssl rand -hex 32)}"
   cat > "$ENV_FILE" <<EOF
 NODE_ENV=production
 PORT=8080
