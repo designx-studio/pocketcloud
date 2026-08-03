@@ -58,8 +58,106 @@ function switchTab(t){state.activeTab=t;const s={nodes:'sectionNodes',tasks:'sec
 async function loadTasks(){state.tasks=await get('/api/v1/tasks');const b=$('tasksTableBody');if(!b)return;b.innerHTML=state.tasks.length?state.tasks.slice(0,100).map(t=>`<tr><td><code>${esc(t.id.slice(0,8))}…</code></td><td>${esc(t.type)}</td><td>${esc(t.server?.name||t.serverId)}</td><td><span class="status-chip ${esc(t.status.toLowerCase())}">${esc(t.status)}</span></td><td>${esc(new Date(t.createdAt).toLocaleString())}</td></tr>`).join(''):'<tr><td colspan="5"><div class="empty-state">No tasks dispatched yet.</div></td></tr>'}
 function renderBlueprints(){const c=$('blueprintsContainer');if(!c)return;c.innerHTML=state.blueprints.length?state.blueprints.map(b=>{const v=b.versions?.[0];return`<div class="bp-simple-card"><div><div class="bp-simple-title">${esc(b.name)}</div><div class="bp-simple-desc">Version ${v?.version||1} • ${esc(b.server?.name||'Unknown source')}</div></div><button class="btn btn-primary" data-restore-id="${esc(v?.id||'')}" data-restore-name="${esc(b.name)}">Restore</button></div>`}).join(''):'<div class="empty-state"><strong>No blueprints yet</strong><span>Capture one from a connected node.</span></div>';c.querySelectorAll('[data-restore-id]').forEach(b=>b.addEventListener('click',()=>openRestore(b.dataset.restoreId,b.dataset.restoreName)));iconRefresh()}
 function openRestore(v,n){$('restoreWizardBox')?.classList.remove('hidden');if($('lblRestoreBpName'))$('lblRestoreBpName').textContent=n;const s=$('selectTargetVps');if(s){const online=state.servers.filter(x=>x.status==='ONLINE');s.innerHTML=online.length?online.map(x=>`<option value="${esc(x.id)}" data-version-id="${esc(v)}">${esc(x.name)} (${esc(x.ipAddress)})</option>`).join(''):'<option disabled>No ONLINE servers</option>'}}
-async function dispatchTask(type,payload={}){if(!state.selectedServer)return toast('Select a server first','error');try{const t=await post('/api/v1/tasks',{serverId:state.selectedServer.id,type,payload});if($('taskPipelineStatus'))$('taskPipelineStatus').textContent='QUEUED';if($('taskConsoleOutput'))$('taskConsoleOutput').textContent=`Task ${t.id} queued. Waiting for agent…`;toast(`${type} queued`,'success')}catch(e){toast(e.message,'error')}}
-async function captureBlueprint(){if(!state.selectedServer)return toast('Select a server first','error');const n=`${state.selectedServer.name}-blueprint-${Date.now()}`,m={version:'1.1',blueprint:{name:n,os:state.selectedServer.os,architecture:state.selectedServer.architecture,captured_from:state.selectedServer.name,captured_at:new Date().toISOString()},system:{packages:[],services:[]},containers:{services:[],active_containers:[]},ports:[]};try{await post('/api/v1/blueprints',{serverId:state.selectedServer.id,name:n,manifest:m});await loadBlueprints();switchTab('blueprints');toast('Blueprint captured','success')}catch(e){toast(e.message,'error')}}
+let taskTrackerTimer = null;
+async function trackTaskProgress(taskId) {
+  if (taskTrackerTimer) clearInterval(taskTrackerTimer);
+  const fill = $('taskProgressBarFill');
+  const status = $('taskPipelineStatus');
+  const consoleOut = $('taskConsoleOutput');
+
+  const updateUI = (task, logs = []) => {
+    if (!task) return;
+    const st = task.status;
+    if (status) status.textContent = st;
+
+    let pct = 15;
+    if (st === 'QUEUED') pct = 25;
+    else if (st === 'RUNNING') pct = 65;
+    else if (st === 'SUCCESS' || st === 'FAILED') pct = 100;
+
+    if (fill) {
+      fill.style.width = `${pct}%`;
+      fill.style.background = st === 'FAILED' ? '#ef4444' : st === 'SUCCESS' ? '#10b981' : 'linear-gradient(90deg, #f5bf38, #10b981)';
+    }
+
+    ['stepQueued', 'stepRunning', 'stepExecuting', 'stepFinished'].forEach(id => {
+      const el = $(id);
+      if (el) el.style.color = 'var(--muted)';
+    });
+    if (st === 'QUEUED' && $('stepQueued')) $('stepQueued').style.color = 'var(--amber)';
+    if (st === 'RUNNING') {
+      if ($('stepQueued')) $('stepQueued').style.color = '#10b981';
+      if ($('stepRunning')) $('stepRunning').style.color = 'var(--amber)';
+      if ($('stepExecuting')) $('stepExecuting').style.color = '#3b82f6';
+    }
+    if (st === 'SUCCESS' || st === 'FAILED') {
+      ['stepQueued', 'stepRunning', 'stepExecuting', 'stepFinished'].forEach(id => {
+        const el = $(id);
+        if (el) el.style.color = st === 'SUCCESS' ? '#10b981' : '#ef4444';
+      });
+    }
+
+    if (consoleOut) {
+      const logLines = logs.map(l => `[${new Date(l.createdAt).toLocaleTimeString()}] [${l.level}] ${l.message}`).join('\n');
+      consoleOut.textContent = `Task ID: ${task.id}\nType: ${task.type}\nStatus: ${task.status}\n\n=== LOG STREAM ===\n${logLines || '> Executing task payload...'}`;
+    }
+  };
+
+  taskTrackerTimer = setInterval(async () => {
+    try {
+      const task = await get(`/api/v1/tasks/${taskId}`);
+      const logs = await get(`/api/v1/tasks/${taskId}/logs`).catch(() => []);
+      updateUI(task, logs);
+      if (task.status === 'SUCCESS' || task.status === 'FAILED') {
+        clearInterval(taskTrackerTimer);
+        taskTrackerTimer = null;
+        loadTasks();
+      }
+    } catch (e) {
+      clearInterval(taskTrackerTimer);
+      taskTrackerTimer = null;
+    }
+  }, 1500);
+}
+
+async function dispatchTask(type,payload={}){
+  if(!state.selectedServer)return toast('Select a server first','error');
+  try{
+    const t=await post('/api/v1/tasks',{serverId:state.selectedServer.id,type,payload});
+    if($('taskPipelineStatus'))$('taskPipelineStatus').textContent='QUEUED';
+    if($('taskConsoleOutput'))$('taskConsoleOutput').textContent=`Task ${t.id} queued. Waiting for agent…`;
+    toast(`${type} queued`,'success');
+    trackTaskProgress(t.id);
+  }catch(e){
+    toast(e.message,'error')
+  }
+}
+
+async function captureBlueprint(){
+  if(!state.selectedServer)return toast('Select a server first','error');
+  const n=`${state.selectedServer.name}-blueprint-${Date.now()}`;
+  const m={
+    version:'1.1',
+    blueprint:{
+      name:n,
+      os:state.selectedServer.os||'linux',
+      architecture:state.selectedServer.architecture||'x86_64',
+      captured_from:state.selectedServer.name||'vps',
+      captured_at:new Date().toISOString()
+    },
+    system:{packages:[],services:[]},
+    containers:{services:[],active_containers:[]},
+    ports:[]
+  };
+  try{
+    await post('/api/v1/blueprints',{serverId:state.selectedServer.id,name:n,manifest:m});
+    await loadBlueprints();
+    switchTab('blueprints');
+    toast('Blueprint captured successfully','success');
+  }catch(e){
+    toast(e.message||'Failed to capture blueprint','error');
+  }
+}
 async function executeRestore(){const s=$('selectTargetVps'),o=s?.options[s.selectedIndex];if(!s?.value||!o?.dataset.versionId)return toast('Select an online target','error');try{const r=await post('/api/v1/blueprints/restore',{blueprintVersionId:o.dataset.versionId,targetServerId:s.value});if($('restoreTerminalOutput'))$('restoreTerminalOutput').textContent=`Task ${r.taskId} queued.\n${r.warnings?.join('\n')||'No compatibility warnings.'}`;$('restoreProgressBox')?.classList.remove('hidden')}catch(e){toast(e.message,'error')}}
 async function loadLogs(){const o=$('diagConsoleOutput');if(!o)return;o.textContent='';for(const s of state.servers.slice(0,5)){try{const logs=await get(`/api/v1/servers/${s.id}/logs?limit=10`);o.textContent+=`\n[${s.name}]\n${logs.map(l=>JSON.stringify(l.payload)).join('\n')||'(no telemetry)'}\n`}catch{o.textContent+=`\n[${s.name}] unavailable\n`}}}
 async function runDiagnostics(){try{const r=await post('/api/v1/diagnostics/ai',{rawLogs:$('diagConsoleOutput')?.textContent||''});if($('aiDiagOutput'))$('aiDiagOutput').textContent=`${r.diagnosticResults.join('\n')}\n\n${r.sanitizedLogs}`}catch(e){toast(e.message,'error')}}async function createBackup(){try{const r=await fetch(`${API_BASE}/api/v1/backups/export`,{headers:auth.accessToken?{Authorization:`Bearer ${auth.accessToken}`}:{}});if(!r.ok)throw Error(`Backup failed: HTTP ${r.status}`);const b=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`pocketcloud-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();toast('Backup exported','success')}catch(e){toast(e.message,'error')}}

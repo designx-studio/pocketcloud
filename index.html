@@ -916,12 +916,26 @@
                     </div>
                   </div>
 
-                  <!-- Task pipeline -->
+                  <!-- Task pipeline & live progress -->
                   <div class="detail-section">
-                    <div class="detail-section-title">
-                      Task Pipeline
+                    <div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center;">
+                      Task Pipeline & Progress
                       <span id="taskPipelineStatus" style="font-size:0.72rem;font-weight:700;padding:2px 9px;border-radius:99px;background:var(--amber-dim);color:var(--amber-dark);letter-spacing:0.04em">IDLE</span>
                     </div>
+
+                    <!-- Progress Bar -->
+                    <div id="taskProgressBarTrack" style="width:100%;height:8px;background:rgba(255,255,255,0.06);border-radius:99px;margin:12px 0;overflow:hidden;position:relative;">
+                      <div id="taskProgressBarFill" style="width:0%;height:100%;background:linear-gradient(90deg, #f5bf38, #10b981);transition:width 0.3s ease;border-radius:99px;"></div>
+                    </div>
+
+                    <!-- Step Stepper -->
+                    <div id="taskProgressSteps" style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--muted);margin-bottom:12px;">
+                      <span id="stepQueued" style="display:flex;align-items:center;gap:4px;"><i data-lucide="clock" style="width:12px;height:12px;"></i> 1. Queued</span>
+                      <span id="stepRunning" style="display:flex;align-items:center;gap:4px;"><i data-lucide="loader-2" style="width:12px;height:12px;"></i> 2. Dispatched</span>
+                      <span id="stepExecuting" style="display:flex;align-items:center;gap:4px;"><i data-lucide="play" style="width:12px;height:12px;"></i> 3. Executing</span>
+                      <span id="stepFinished" style="display:flex;align-items:center;gap:4px;"><i data-lucide="check-circle-2" style="width:12px;height:12px;"></i> 4. Complete</span>
+                    </div>
+
                     <pre class="console-box" id="taskConsoleOutput">> No task dispatched yet.</pre>
                   </div>
 
