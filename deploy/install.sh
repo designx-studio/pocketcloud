@@ -13,8 +13,7 @@ log() { printf '\n[pocketcloud] %s\n' "$*" >&2; }
 log_error() { printf '\n[pocketcloud] ERROR: %s\n' "$*" >&2; }
 fail() { printf '\n[pocketcloud] ERROR: %s\n' "$*" >&2; exit 1; }
 
-usage() {
-  cat >&2 <<'EOF'
+usage() { cat >&2 <<'EOF'
 Usage: install.sh [--ip | --domain DOMAIN | --app-url URL]
   --ip                 Use public IPv4 over HTTP for quick start
   --domain DOMAIN     Use DOMAIN over HTTPS with automatic TLS
@@ -63,25 +62,22 @@ fetch_source() {
 }
 
 is_ipv4() { [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; }
-
 normalize_app_url() {
   local value="$1" host
   value="${value#"${value%%[![:space:]]*}"}"; value="${value%"${value##*[![:space:]]}"}"; value="${value%/}"
   case "$value" in
     http://*) host="${value#http://}"; is_ipv4 "${host%%/*}" || fail "HTTP is only supported for IPv4 quick start URLs: $value"; printf 'http://%s' "${host%%/*}" ;;
-    https://*) host="${value#https://}"; host="${host%%/*}"; [[ -n "$host" ]] || fail "Invalid APP_URL: $value"; if is_ipv4 "$host"; then fail "HTTPS for IP addresses requires a certificate; use --ip or http://IP"; fi; [[ "$host" == *.* ]] || fail "Domain must be fully qualified: $host"; printf 'https://%s' "$host" ;;
+    https://*) host="${value#https://}"; host="${host%%/*}"; [[ -n "$host" ]] || fail "Invalid APP_URL: $value"; is_ipv4 "$host" && fail "HTTPS for IP addresses requires a certificate; use --ip or http://IP"; [[ "$host" == *.* ]] || fail "Domain must be fully qualified: $host"; printf 'https://%s' "$host" ;;
     *) fail "APP_URL must start with http:// or https://: $value" ;;
   esac
 }
-
 detect_public_ip() { curl -4fsSL --max-time 10 https://api.ipify.org 2>/dev/null || true; }
-
 determine_app_url() {
   local detected choice domain
   if [[ -n "${APP_URL:-}" ]]; then normalize_app_url "$APP_URL"; return; fi
   case "$MODE" in
     ip) detected="$(detect_public_ip)"; [[ -n "$detected" ]] || fail "Public IP detection failed; pass --app-url http://IP or --domain DOMAIN"; normalize_app_url "http://$detected" ;;
-    domain) domain="$REQUESTED_URL"; [[ "$domain" != http://* && "$domain" != https://* ]] || domain="${domain#http://}"; domain="${domain#https://}"; normalize_app_url "https://$domain" ;;
+    domain) domain="${REQUESTED_URL#http://}"; domain="${domain#https://}"; normalize_app_url "https://$domain" ;;
     url) normalize_app_url "$REQUESTED_URL" ;;
     auto)
       detected="$(detect_public_ip)"
@@ -91,42 +87,35 @@ determine_app_url() {
           read -r choice </dev/tty || choice=1
           if [[ "$choice" == 2 ]]; then printf 'Enter domain name: ' >/dev/tty; read -r domain </dev/tty; [[ -n "$domain" ]] || fail "Domain is required"; normalize_app_url "https://$domain"; else normalize_app_url "http://$detected"; fi
         else normalize_app_url "http://$detected"; fi
-      else
-        if [[ -t 0 && -r /dev/tty ]]; then printf '\nPublic IP detection failed. Enter a domain name: ' >/dev/tty; read -r domain </dev/tty; [[ -n "$domain" ]] || fail "A domain or --app-url is required"; normalize_app_url "https://$domain"; else fail "Public IP detection failed; pass --ip, --domain DOMAIN, or --app-url URL"; fi
-      fi ;;
+      elif [[ -t 0 && -r /dev/tty ]]; then
+        printf '\nPublic IP detection failed. Enter a domain name: ' >/dev/tty; read -r domain </dev/tty; [[ -n "$domain" ]] || fail "A domain or --app-url is required"; normalize_app_url "https://$domain"
+      else fail "Public IP detection failed; pass --ip, --domain DOMAIN, or --app-url URL"; fi ;;
   esac
 }
 
 write_caddyfile() {
-  local app_url="$1"
+  local app_url="$1" options=""
+  [[ "$app_url" == http://* ]] && options=$'{\n  auto_https off\n}\n\n'
   cat > "$INSTALL_DIR/deploy/Caddyfile" <<EOF
-{
-  auto_https off
-}
-
-${app_url} {
+${options}${app_url} {
   encode gzip zstd
   @agent-releases path /api/v1/agent/releases/* /api/v1/agent/releases
   handle @agent-releases { reverse_proxy agent-registry:8081 }
   @settings path /api/v1/settings /api/v1/settings/*
   handle @settings { reverse_proxy settings:8082 }
-  @api path /api/* /health /docs/* /install-agent.sh
+  @api path /api/* /health /docs/*
   handle @api { reverse_proxy api:8080 }
   handle { reverse_proxy dashboard:80 }
   header { -Server -X-Powered-By }
 }
 EOF
-  if [[ "$app_url" == https://* ]]; then sed -i 's/^  auto_https off$/  # automatic HTTPS enabled by Caddy/' "$INSTALL_DIR/deploy/Caddyfile"; fi
 }
 
-validate_required() { local value="$1" name="$2"; [[ -n "$value" ]] || fail "Missing required variable: $name"; }
-
 validate_env_file() {
-  local file="$1" app_url cors_origin database_url postgres_password jwt_secret encryption_key
+  local file="$1" app_url cors_origin
   [[ -f "$file" ]] || fail "Environment file not found: $file"
-  app_url="$(grep -E '^APP_URL=' "$file" | head -n1 | cut -d= -f2-)"; cors_origin="$(grep -E '^CORS_ORIGIN=' "$file" | head -n1 | cut -d= -f2-)"; database_url="$(grep -E '^DATABASE_URL=' "$file" | head -n1 | cut -d= -f2-)"; postgres_password="$(grep -E '^POSTGRES_PASSWORD=' "$file" | head -n1 | cut -d= -f2-)"; jwt_secret="$(grep -E '^JWT_SECRET=' "$file" | head -n1 | cut -d= -f2-)"; encryption_key="$(grep -E '^ENCRYPTION_KEY=' "$file" | head -n1 | cut -d= -f2-)"
-  validate_required "$app_url" APP_URL; validate_required "$cors_origin" CORS_ORIGIN; validate_required "$database_url" DATABASE_URL; validate_required "$postgres_password" POSTGRES_PASSWORD; validate_required "$jwt_secret" JWT_SECRET; validate_required "$encryption_key" ENCRYPTION_KEY
-  [[ "$app_url" == http://* || "$app_url" == https://* ]] || fail "APP_URL is invalid: $app_url"
+  app_url="$(grep -E '^APP_URL=' "$file" | head -n1 | cut -d= -f2-)"; cors_origin="$(grep -E '^CORS_ORIGIN=' "$file" | head -n1 | cut -d= -f2-)"
+  [[ -n "$app_url" && -n "$cors_origin" ]] || fail "APP_URL and CORS_ORIGIN are required"
   [[ "$cors_origin" == "$app_url" ]] || fail "CORS_ORIGIN must match APP_URL"
   normalize_app_url "$app_url" >/dev/null
 }
@@ -135,7 +124,6 @@ generate_env() {
   local app_url="$1" api_url ws_url domain_only db_password jwt_secret refresh_secret encryption_key
   domain_only="${app_url#https://}"; domain_only="${domain_only#http://}"; api_url="${app_url}/api"; [[ "$app_url" == https://* ]] && ws_url="wss://${domain_only}/ws" || ws_url="ws://${domain_only}/ws"
   printf 'DOMAIN=<%s>\nAPP_URL=<%s>\nCORS_ORIGIN=<%s>\n' "$domain_only" "$app_url" "$app_url"
-  if [[ -f "$ENV_FILE" && -z "${APP_URL:-}" && "$MODE" == auto ]]; then validate_env_file "$ENV_FILE"; write_caddyfile "$app_url"; return; fi
   umask 077; db_password="$(openssl rand -hex 32)"; jwt_secret="$(openssl rand -hex 64)"; refresh_secret="$(openssl rand -hex 64)"; encryption_key="$(openssl rand -hex 32)"
   cat > "$ENV_FILE" <<EOF
 NODE_ENV=production
@@ -153,13 +141,7 @@ REFRESH_TOKEN_SECRET=${refresh_secret}
 ENCRYPTION_KEY=${encryption_key}
 EOF
   chmod 600 "$ENV_FILE"; ln -sfn ../.env "$INSTALL_DIR/deploy/.env"; validate_env_file "$ENV_FILE"; write_caddyfile "$app_url"
-  if [[ "$app_url" == http://* ]]; then
-    cat >> "$INSTALL_DIR/index.html" <<'EOF'
-<script>document.addEventListener('DOMContentLoaded',()=>{const n=document.createElement('div');n.textContent='Running in Quick Start Mode\nHTTPS is disabled because PocketCloud is accessed by IP.\nAdd a domain later to enable automatic TLS.';n.style='position:fixed;bottom:18px;left:18px;z-index:9999;background:#fff7e6;color:#6b4f00;border:1px solid #f5bf38;border-radius:10px;padding:10px 14px;font:600 12px system-ui;white-space:pre-line;box-shadow:0 4px 18px #0002';document.body.appendChild(n)});</script>
-EOF
-  fi
 }
-
 wait_for_stack() {
   local attempts=0 state
   while (( attempts < 60 )); do
@@ -169,8 +151,7 @@ wait_for_stack() {
   done
   docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps; docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs --tail=100; fail "Timed out waiting for PocketCloud services"
 }
-
 start_stack() { cd "$INSTALL_DIR"; docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build; wait_for_stack; docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps; }
 
-install_docker; fetch_source; FINAL_APP_URL="$(determine_app_url)"; generate_env "$FINAL_APP_URL"; ln -sf "$INSTALL_DIR/scripts/pocketcloud-domain.sh" /usr/local/bin/pocketcloud; chmod +x "$INSTALL_DIR/scripts/pocketcloud-domain.sh"; start_stack
+install_docker; fetch_source; FINAL_APP_URL="$(determine_app_url)"; generate_env "$FINAL_APP_URL"; start_stack
 log "PocketCloud is ready"; printf 'Dashboard: %s\nAPI: %s\nConfig: %s\n' "$FINAL_APP_URL" "${FINAL_APP_URL}/api" "$ENV_FILE"
