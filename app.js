@@ -125,20 +125,19 @@ function bindEvents(){
     loadServers();
   });
 
-  $('btnCopyInstallSection')?.addEventListener('click', () => {
-    const text = $('txtAgentInstallSectionCmd')?.textContent;
-    if (text) {
-      navigator.clipboard.writeText(text);
-      toast('Copied agent installation command!', 'success');
-    }
+  $('btnCopyAgentInstallCmd')?.addEventListener('click', async () => {
+    const text = $('txtAgentInstallCmd')?.textContent;
+    await copyTextWithFallback(text, 'Installation command copied.');
   });
 
-  $('btnCopyControlPlaneInstall')?.addEventListener('click', () => {
+  $('btnCopyInstallSection')?.addEventListener('click', async () => {
+    const text = $('txtAgentInstallSectionCmd')?.textContent;
+    await copyTextWithFallback(text, 'Copied agent installation command!');
+  });
+
+  $('btnCopyControlPlaneInstall')?.addEventListener('click', async () => {
     const text = $('txtControlPlaneInstallCmd')?.textContent;
-    if (text) {
-      navigator.clipboard.writeText(text);
-      toast('Copied deploy command!', 'success');
-    }
+    await copyTextWithFallback(text, 'Copied deploy command!');
   });
 
   $('btnGenerateAgentInstall')?.addEventListener('click', async () => {
@@ -154,13 +153,46 @@ function bindEvents(){
     }
   });
 
-  $('btnCopyReinstallAgentCmd')?.addEventListener('click', () => {
+  $('btnCopyReinstallAgentCmd')?.addEventListener('click', async () => {
     const text = $('txtReinstallAgentCmd')?.textContent;
-    if (text) {
-      navigator.clipboard.writeText(text);
-      toast('Copied reinstallation command!', 'success');
-    }
+    await copyTextWithFallback(text, 'Copied reinstallation command!');
   });
+}
+
+async function copyTextWithFallback(text, successMsg = 'Installation command copied.') {
+  if (!text) {
+    toast('Nothing to copy', 'error');
+    return;
+  }
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      toast(successMsg, 'success');
+      return;
+    }
+  } catch (err) {
+    // Fall back to execCommand if navigator.clipboard.writeText fails
+  }
+
+  try {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-9999px';
+    textArea.style.top = '-9999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    if (successful) {
+      toast(successMsg, 'success');
+    } else {
+      throw new Error('Copy command failed');
+    }
+  } catch (err) {
+    toast(err.message || 'Failed to copy command', 'error');
+  }
 }
 document.addEventListener('DOMContentLoaded',()=>{
   bindEvents();

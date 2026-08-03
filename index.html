@@ -1236,7 +1236,12 @@
         <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px">
           Run this command over SSH on your VPS to install the outbound agent:
         </p>
-        <pre id="txtAgentInstallCmd" class="console-box" style="user-select:all;min-height:auto;font-size:0.75rem">curl -fsSL http://localhost:8080/install-agent.sh | bash</pre>
+        <div style="display:flex;align-items:center;gap:8px">
+          <pre id="txtAgentInstallCmd" class="console-box" style="user-select:all;min-height:auto;font-size:0.75rem;flex:1;margin:0">curl -fsSL http://localhost:8080/install-agent.sh | bash</pre>
+          <button type="button" class="btn btn-ghost btn-icon btn-sm" id="btnCopyAgentInstallCmd" aria-label="Copy installation command" title="Copy installation command" style="flex-shrink:0">
+            <i data-lucide="copy" style="width:16px;height:16px"></i>
+          </button>
+        </div>
       </div>
       <div class="modal-foot">
         <button class="btn btn-amber" id="btnFinishNodeAdd">Done</button>

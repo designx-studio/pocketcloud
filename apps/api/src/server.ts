@@ -314,6 +314,11 @@ app.get('/api/v1/auth/me', async (req) => {
   return { id: user.id, email: user.email, role: user.role };
 });
 
+const getAgentInstallCommand = (token: string): string => {
+  const appUrl = (config.APP_URL || 'http://localhost:8080').replace(/\/+$/, '');
+  return `curl -fsSL ${appUrl}/install-agent.sh | bash -s -- --token ${token} --control-plane ${appUrl}`;
+};
+
 // SERVER NODES MANAGEMENT
 app.get('/api/v1/servers', async () => {
   const servers = await prisma.server.findMany({
@@ -370,15 +375,10 @@ app.post('/api/v1/servers', async (req, reply) => {
     }
   });
 
-  const host = (config.POCKETCLOUD_DOMAIN !== 'localhost' ? config.POCKETCLOUD_DOMAIN : (req.headers.host || 'localhost')) as string;
-  const hostPart = host.split(':')[0] || '';
-  const isIPOrLocalhost = hostPart === 'localhost' || /^[0-9.]+$/.test(hostPart);
-  const scheme = isIPOrLocalhost ? 'http' : 'https';
-
   return reply.code(201).send({
     server,
     bootstrapToken: rawToken,
-    installCommand: `curl -fsSL ${scheme}://${host}/install-agent.sh | bash -s -- --token ${rawToken} --control-plane ${scheme}://${host}`
+    installCommand: getAgentInstallCommand(rawToken)
   });
 });
 
@@ -400,16 +400,9 @@ app.post('/api/v1/servers/:id/bootstrap-token', async (req, reply) => {
     }
   });
 
-  const host = (config.POCKETCLOUD_DOMAIN !== 'localhost' ? config.POCKETCLOUD_DOMAIN : (req.headers.host || 'localhost')) as string;
-  const hostPart = host.split(':')[0] || '';
-  const isIPOrLocalhost = hostPart === 'localhost' || /^[0-9.]+$/.test(hostPart);
-  const scheme = isIPOrLocalhost ? 'http' : 'https';
-
-  const installCommand = `curl -fsSL ${scheme}://${host}/install-agent.sh | bash -s -- --token ${rawToken} --control-plane ${scheme}://${host}`;
-
   return {
     bootstrapToken: rawToken,
-    installCommand
+    installCommand: getAgentInstallCommand(rawToken)
   };
 });
 
