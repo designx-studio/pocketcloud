@@ -41,6 +41,10 @@ type HeartbeatPayload struct {
 	Uptime       int64   `json:"uptime"`
 	OS           string  `json:"os"`
 	Architecture string  `json:"architecture"`
+	MemTotalMB   float64 `json:"memTotalMb,omitempty"`
+	MemUsedMB    float64 `json:"memUsedMb,omitempty"`
+	DiskTotalGB  float64 `json:"diskTotalGb,omitempty"`
+	DiskUsedGB   float64 `json:"diskUsedGb,omitempty"`
 }
 
 type Task struct {
@@ -283,15 +287,21 @@ func truncate(s string, n int) string {
 // ─── Telemetry collection ─────────────────────────────────────────────────────
 
 func collectTelemetry() HeartbeatPayload {
+	memPct, totalMb, usedMb := getMemoryStats()
+	diskPct, totalGb, usedGb := getDiskStats()
 	return HeartbeatPayload{
 		CPU:          getCPUUsage(),
-		Memory:       getMemoryUsage(),
-		Disk:         getDiskUsage(),
+		Memory:       memPct,
+		Disk:         diskPct,
 		Load:         getLoadAverage(),
 		Swap:         getSwapUsage(),
 		Uptime:       getUptime(),
 		OS:           runtime.GOOS + "/" + getDistro(),
 		Architecture: runtime.GOARCH,
+		MemTotalMB:   totalMb,
+		MemUsedMB:    usedMb,
+		DiskTotalGB:  totalGb,
+		DiskUsedGB:   usedGb,
 	}
 }
 
@@ -339,10 +349,10 @@ func getCPUUsage() float64 {
 	return (1 - dIdle/dTotal) * 100
 }
 
-func getMemoryUsage() float64 {
+func getMemoryStats() (pct float64, totalMb float64, usedMb float64) {
 	data, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
-		return 0
+		return 0, 0, 0
 	}
 	var total, avail float64
 	for _, line := range strings.Split(string(data), "\n") {
@@ -353,24 +363,45 @@ func getMemoryUsage() float64 {
 		val, _ := strconv.ParseFloat(fields[1], 64)
 		switch fields[0] {
 		case "MemTotal:":
-			total = val
+			total = val // kB
 		case "MemAvailable:":
-			avail = val
+			avail = val // kB
 		}
 	}
 	if total == 0 {
-		return 0
+		return 0, 0, 0
 	}
-	return (total - avail) / total * 100
+	used := total - avail
+	totalMb = total / 1024
+	usedMb = used / 1024
+	pct = (used / total) * 100
+	return pct, totalMb, usedMb
+}
+
+func getMemoryUsage() float64 {
+	pct, _, _ := getMemoryStats()
+	return pct
+}
+
+func getDiskStats() (pct float64, totalGb float64, usedGb float64) {
+	out, err := exec.Command("sh", "-c", "df -k / | awk 'NR==2{print $2, $3, $5}' | tr -d '%'").Output()
+	if err != nil {
+		return 0, 0, 0
+	}
+	fields := strings.Fields(strings.TrimSpace(string(out)))
+	if len(fields) < 3 {
+		return 0, 0, 0
+	}
+	totKb, _ := strconv.ParseFloat(fields[0], 64)
+	usedKb, _ := strconv.ParseFloat(fields[1], 64)
+	p, _ := strconv.ParseFloat(fields[2], 64)
+
+	return p, totKb / 1024 / 1024, usedKb / 1024 / 1024
 }
 
 func getDiskUsage() float64 {
-	out, err := exec.Command("sh", "-c", "df -h / | awk 'NR==2{print $5}' | tr -d '%'").Output()
-	if err != nil {
-		return 0
-	}
-	val, _ := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
-	return val
+	pct, _, _ := getDiskStats()
+	return pct
 }
 
 func getLoadAverage() float64 {

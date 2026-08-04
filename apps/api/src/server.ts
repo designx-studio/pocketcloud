@@ -11,6 +11,7 @@ import { config } from './config.js';
 import { hashPassword, verifyPassword, signAccess, randomToken, hashToken } from './security.js';
 import { sanitizeEnvironment, parseBlueprintManifest, validateCompatibility } from '@pocketcloud/blueprint';
 import { toJsonField, fromJsonField, isSQLite } from './db-compat.js';
+import { registerV2Routes } from './routes-v2.js';
 
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -46,6 +47,7 @@ await app.register(cors, {
 await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
 await app.register(swagger, { openapi: { info: { title: 'PocketCloud API', version: '1.1.0' } } });
 await app.register(swaggerUi, { routePrefix: '/docs' });
+await app.register(registerV2Routes);
 
 // Health check endpoint
 app.get('/health', async () => ({
@@ -387,7 +389,7 @@ app.get('/api/v1/servers', async () => {
     },
     orderBy: { createdAt: 'desc' }
   });
-  
+
   // Convert BigInt fields to Number for JSON serialization
   return servers.map((server: any) => ({
     ...server,
@@ -504,7 +506,7 @@ app.patch('/api/v1/servers/:id', async (req, reply) => {
 app.delete('/api/v1/servers/:id', async (req, reply) => {
   const id = (req.params as any).id;
   const auth = (req as any).auth;
-  
+
   const server = await prisma.server.findUnique({ where: { id } });
   if (server) {
     await prisma.auditLog.create({
@@ -534,11 +536,37 @@ app.get('/api/v1/servers/:id/metrics', async (req, reply) => {
     select: { cpu: true, memory: true, disk: true, load: true, swap: true, uptime: true, collectedAt: true }
   });
 
+  const latestHeartbeat = await prisma.heartbeat.findFirst({
+    where: { serverId: id },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  let extraData: Record<string, any> = {};
+  if (latestHeartbeat?.payload) {
+    try {
+      const parsed = typeof latestHeartbeat.payload === 'string'
+        ? JSON.parse(latestHeartbeat.payload)
+        : latestHeartbeat.payload;
+      extraData = {
+        memTotalMb: parsed.memTotalMb,
+        memUsedMb: parsed.memUsedMb,
+        diskTotalGb: parsed.diskTotalGb,
+        diskUsedGb: parsed.diskUsedGb
+      };
+    } catch { }
+  }
+
   // Return in ascending time order for charting
-  return metrics.reverse().map((m: any) => ({
+  const result = metrics.reverse().map((m: any) => ({
     ...m,
     uptime: Number(m.uptime) // BigInt → number for JSON serialisation
   }));
+
+  if (result.length > 0) {
+    Object.assign(result[result.length - 1], extraData);
+  }
+
+  return result;
 });
 
 app.get('/api/v1/servers/:id/logs', async (req, reply) => {
@@ -643,18 +671,18 @@ app.post('/api/v1/agent/heartbeat', async (req, reply) => {
     }),
     ...(payload.cpu !== undefined && payload.memory !== undefined && payload.disk !== undefined
       ? [
-          prisma.healthMetric.create({
-            data: {
-              serverId: agent.serverId,
-              cpu: payload.cpu,
-              memory: payload.memory,
-              disk: payload.disk,
-              load: payload.load ?? 0,
-              swap: payload.swap ?? 0,
-              uptime: isSQLite() ? Math.floor(payload.uptime ?? 0) : (BigInt(payload.uptime ?? 0) as any)
-            }
-          })
-        ]
+        prisma.healthMetric.create({
+          data: {
+            serverId: agent.serverId,
+            cpu: payload.cpu,
+            memory: payload.memory,
+            disk: payload.disk,
+            load: payload.load ?? 0,
+            swap: payload.swap ?? 0,
+            uptime: isSQLite() ? Math.floor(payload.uptime ?? 0) : (BigInt(payload.uptime ?? 0) as any)
+          }
+        })
+      ]
       : [])
   ]);
 
@@ -711,6 +739,8 @@ app.post('/api/v1/tasks', async (req, reply) => {
   const body = z.object({
     serverId: z.string(),
     type: z.enum([
+      'exec',
+      'run_command',
       'install_docker',
       'update_packages',
       'restart_service',

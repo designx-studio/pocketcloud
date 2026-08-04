@@ -11,6 +11,8 @@ describe('Task Payload Schema Validation', () => {
   const taskSchema = z.object({
     serverId: z.string().uuid(),
     type: z.enum([
+      'exec',
+      'run_command',
       'update_packages',
       'install_docker',
       'restart_service',

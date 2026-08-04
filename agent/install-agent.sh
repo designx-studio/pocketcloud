@@ -4,12 +4,22 @@ CONTROL_PLANE="${POCKETCLOUD_CONTROL_PLANE:-}"
 TOKEN=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --token) TOKEN="${2:-}"; shift 2 ;;
-    --control-plane) CONTROL_PLANE="${2:-}"; shift 2 ;;
-    *) echo "unknown argument: $1" >&2; exit 2 ;;
+    --token)
+      if [[ $# -lt 2 ]]; then echo "Error: --token requires a value" >&2; exit 2; fi
+      TOKEN="$2"; shift 2 ;;
+    --token=*)
+      TOKEN="${1#*=}"; shift ;;
+    --control-plane)
+      if [[ $# -lt 2 ]]; then echo "Error: --control-plane requires a value" >&2; exit 2; fi
+      CONTROL_PLANE="$2"; shift 2 ;;
+    --control-plane=*)
+      CONTROL_PLANE="${1#*=}"; shift ;;
+    *)
+      echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 [[ $EUID -eq 0 ]] || { echo "run as root" >&2; exit 1; }
+CONTROL_PLANE="${CONTROL_PLANE%/}"
 [[ -n "$CONTROL_PLANE" && -n "$TOKEN" ]] || { echo "control plane and token required" >&2; exit 1; }
 command -v curl >/dev/null || { apt-get update -y && apt-get install -y curl; }
 

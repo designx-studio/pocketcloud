@@ -48,6 +48,23 @@ model Server {
   tasks           Task[]
   blueprints      Blueprint[]
   bootstrapTokens BootstrapToken[]
+  // Feature 1: Live Infrastructure Map
+  region          String?
+  latitude        Float?
+  longitude       Float?
+  // Feature 3: Free-Tier Lifecycle Tracking
+  tierType        String?          // "always_free" | "trial" | "credit" | "paid"
+  tierExpiresAt   DateTime?
+  lifecycleRisk   String           @default("UNKNOWN") // "SAFE" | "WATCH" | "AT_RISK" | "UNKNOWN"
+  lastActivityAt  DateTime?
+  // Feature 4: Migration Planner
+  role            String?          // "database" | "api" | "worker" | "dev" | ...
+  importance      String           @default("STANDARD") // "CRITICAL" | "STANDARD" | "DISPOSABLE"
+  // Feature 4: active blueprint link for dependency inference
+  activeBlueprintId String?
+  // Relations for new features
+  dataBackups     DataBackup[]
+  tunnelRoutes    TunnelRoute[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 }
@@ -98,13 +115,17 @@ model TaskLog {
 }
 
 model Blueprint {
-  id        String             @id @default(uuid())
-  serverId  String
-  server    Server             @relation(fields: [serverId], references: [id])
-  name      String
-  versions  BlueprintVersion[]
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  id              String             @id @default(uuid())
+  serverId        String
+  server          Server             @relation(fields: [serverId], references: [id])
+  name            String
+  versions        BlueprintVersion[]
+  // Feature 5: Prebuilt Service Catalog
+  slug            String?            @unique
+  isSystemCatalog Boolean            @default(false)
+  description     String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 }
 
 model BlueprintVersion {
@@ -173,4 +194,42 @@ model Backup {
   checksum  String
   createdAt DateTime @default(now())
   createdBy String
+}
+
+// Feature 2: Encrypted One-Click Backup & Restore
+model DataBackup {
+  id             String    @id @default(uuid())
+  serverId       String
+  server         Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  blueprintId    String?
+  label          String
+  sizeBytes      BigInt    @default(0)
+  checksumSha256 String    @default("")
+  storageKey     String
+  storageBackend String    @default("local") // "s3" | "hetzner-storagebox" | "local"
+  encrypted      Boolean   @default(true)
+  status         String    @default("QUEUED") // QUEUED | RUNNING | COMPLETE | FAILED
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+}
+
+// Feature 6: Notification Layer
+model NotificationChannel {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   // "webhook" | "telegram" | "slack"
+  target    String   // webhook URL, telegram chat_id, or slack webhook URL
+  secret    String?  // for telegram bot token
+  events    String[] // e.g. ["server.offline", "task.failed", "lifecycle.at_risk"]
+  createdAt DateTime @default(now())
+}
+
+// Feature 8: Ingress/Tunnel for NAT'd Nodes
+model TunnelRoute {
+  id         String   @id @default(uuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  subdomain  String   @unique
+  targetPort Int
+  createdAt  DateTime @default(now())
 }

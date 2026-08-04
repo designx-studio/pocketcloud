@@ -26,7 +26,9 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --ip) [[ "$MODE" == auto ]] || usage; MODE=ip; shift ;;
     --domain) [[ "$MODE" == auto && -n "${2:-}" ]] || usage; MODE=domain; REQUESTED_URL="$2"; shift 2 ;;
+    --domain=*) [[ "$MODE" == auto ]] || usage; MODE=domain; REQUESTED_URL="${1#*=}"; shift ;;
     --app-url) [[ "$MODE" == auto && -n "${2:-}" ]] || usage; MODE=url; REQUESTED_URL="$2"; shift 2 ;;
+    --app-url=*) [[ "$MODE" == auto ]] || usage; MODE=url; REQUESTED_URL="${1#*=}"; shift ;;
     -h|--help) usage ;;
     *) usage ;;
   esac
