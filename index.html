@@ -482,7 +482,46 @@
       z-index: 0;
       pointer-events: none;
       background:
+        radial-gradient(ellipse 60% 50% at 50% 100%, rgba(216, 151, 60, 0.06) 0%, transparent 60%),
         linear-gradient(180deg, rgba(7, 9, 14, 0) 0%, rgba(7, 9, 14, 0.4) 100%);
+    }
+
+    /* Hero particle network canvas */
+    .l-hero-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.7;
+    }
+
+    /* Animated dotted pattern overlay */
+    .l-hero-pattern {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+      background-image: radial-gradient(rgba(216, 151, 60, 0.12) 1px, transparent 1px);
+      background-size: 24px 24px;
+      mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 0%, transparent 75%);
+      -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 0%, transparent 75%);
+      animation: pattern-drift 30s linear infinite;
+    }
+
+    @keyframes pattern-drift {
+      from {
+        background-position: 0 0;
+      }
+
+      to {
+        background-position: 48px 48px;
+      }
     }
 
     .l-hero-inner {
@@ -2938,6 +2977,9 @@
 
     <!-- Hero -->
     <section class="l-hero" id="top">
+      <!-- Animated particle network background -->
+      <canvas class="l-hero-canvas" id="heroCanvas"></canvas>
+      <div class="l-hero-pattern"></div>
       <div class="l-hero-inner">
         <div class="l-eyebrow">
           <i data-lucide="network" style="width:13px;height:13px"></i>
@@ -4019,6 +4061,90 @@
             lNav.classList.remove('scrolled');
           }
         }, { passive: true });
+      }
+
+      // ─── Hero particle network animation ───────────────────────
+      const heroCanvas = document.getElementById('heroCanvas');
+      if (heroCanvas && heroCanvas.getContext) {
+        const ctx = heroCanvas.getContext('2d');
+        const heroSection = document.querySelector('.l-hero');
+        let particles = [];
+        let animId = null;
+
+        const COLORS = ['216, 151, 60', '164, 36, 59', '216, 201, 155'];
+
+        function resizeCanvas() {
+          if (!heroSection) return;
+          const rect = heroSection.getBoundingClientRect();
+          const dpr = window.devicePixelRatio || 1;
+          heroCanvas.width = rect.width * dpr;
+          heroCanvas.height = rect.height * dpr;
+          heroCanvas.style.width = rect.width + 'px';
+          heroCanvas.style.height = rect.height + 'px';
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          initParticles(rect.width, rect.height);
+        }
+
+        function initParticles(w, h) {
+          const count = Math.min(90, Math.floor((w * h) / 14000));
+          particles = [];
+          for (let i = 0; i < count; i++) {
+            particles.push({
+              x: Math.random() * w,
+              y: Math.random() * h,
+              vx: (Math.random() - 0.5) * 0.5,
+              vy: (Math.random() - 0.5) * 0.5,
+              r: Math.random() * 1.8 + 0.6,
+              c: COLORS[Math.floor(Math.random() * COLORS.length)]
+            });
+          }
+        }
+
+        function draw() {
+          const w = heroCanvas.width;
+          const h = heroCanvas.height;
+          ctx.clearRect(0, 0, w, h);
+
+          // Draw connections
+          for (let i = 0; i < particles.length; i++) {
+            for (let j = i + 1; j < particles.length; j++) {
+              const dx = particles[i].x - particles[j].x;
+              const dy = particles[i].y - particles[j].y;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist < 130) {
+                const alpha = (1 - dist / 130) * 0.35;
+                ctx.strokeStyle = `rgba(${particles[i].c}, ${alpha})`;
+                ctx.lineWidth = 0.8;
+                ctx.beginPath();
+                ctx.moveTo(particles[i].x, particles[i].y);
+                ctx.lineTo(particles[j].x, particles[j].y);
+                ctx.stroke();
+              }
+            }
+          }
+
+          // Draw particles
+          for (const p of particles) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${p.c}, 0.7)`;
+            ctx.fill();
+
+            p.x += p.vx;
+            p.y += p.vy;
+
+            const maxW = heroCanvas.width;
+            const maxH = heroCanvas.height;
+            if (p.x < 0 || p.x > maxW) p.vx *= -1;
+            if (p.y < 0 || p.y > maxH) p.vy *= -1;
+          }
+
+          animId = requestAnimationFrame(draw);
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        draw();
       }
 
       // ─── Global Search (Cmd+K) ─────────────────────────────────
