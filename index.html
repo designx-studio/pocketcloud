@@ -770,6 +770,18 @@
       transition: all 0.25s var(--ease);
     }
 
+    .l-node-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      color: #38bdf8;
+      margin-bottom: 10px;
+    }
+
     .l-node:hover {
       border-color: rgba(245, 191, 56, 0.3);
       transform: translateY(-3px);
@@ -853,6 +865,360 @@
       font-size: 0.7rem;
       color: var(--amber);
       font-family: var(--mono);
+    }
+
+    .l-cp-output {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(56, 189, 248, 0.06));
+      border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+
+    .l-cp-output .l-cp-icon {
+      background: linear-gradient(135deg, #10b981, #059669);
+    }
+
+    /* ─── Problem Section ──────────────────────────────────── */
+    .l-problem-list {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .l-problem-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 20px;
+      background: rgba(13, 18, 30, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 12px;
+      font-size: 0.92rem;
+      color: #cbd5e1;
+    }
+
+    .l-problem-item i {
+      width: 18px;
+      height: 18px;
+      color: var(--red);
+      flex-shrink: 0;
+    }
+
+    .l-problem-tag {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: #94a3b8;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 2px 8px;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+
+    .l-problem-verdict {
+      max-width: 640px;
+      margin: 36px auto 0;
+      text-align: center;
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: #e2e8f0;
+      line-height: 1.6;
+    }
+
+    .l-problem-verdict em {
+      color: var(--amber);
+      font-style: normal;
+    }
+
+    /* ─── Idea Section ─────────────────────────────────────── */
+    .l-idea-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      max-width: 1000px;
+      margin: 0 auto;
+      align-items: center;
+    }
+
+    .l-idea-tagline {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #f8fafc;
+      margin-bottom: 16px;
+      line-height: 1.35;
+      letter-spacing: -0.02em;
+    }
+
+    .l-idea-tagline em {
+      color: var(--amber);
+      font-style: normal;
+    }
+
+    .l-idea-body {
+      font-size: 1.05rem;
+      color: #94a3b8;
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }
+
+    .l-idea-divider {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding-top: 20px;
+    }
+
+    .l-idea-divider strong {
+      display: block;
+      font-size: 1.3rem;
+      font-weight: 800;
+      color: #f8fafc;
+      margin-bottom: 6px;
+    }
+
+    .l-idea-divider strong span {
+      color: var(--green);
+    }
+
+    .l-idea-divider p {
+      font-size: 1rem;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+
+    .l-blueprint-card {
+      background: #060911;
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    }
+
+    .l-blueprint-head {
+      background: rgba(255, 255, 255, 0.04);
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+
+    .l-blueprint-body {
+      padding: 20px;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      line-height: 1.8;
+      color: #a3e6c8;
+      overflow-x: auto;
+    }
+
+    .l-bp-key {
+      color: #38bdf8;
+    }
+
+    .l-bp-str {
+      color: #a3e6c8;
+    }
+
+    .l-bp-overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: rgba(7, 10, 18, 0.4);
+      backdrop-filter: blur(2px);
+    }
+
+    /* ─── Position Section ─────────────────────────────────── */
+    .l-position-card {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 56px 48px;
+      text-align: center;
+      background: linear-gradient(135deg, rgba(245, 191, 56, 0.07), rgba(16, 185, 129, 0.04));
+      border: 1px solid rgba(245, 191, 56, 0.2);
+      border-radius: 24px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .l-position-heading {
+      font-size: clamp(1.4rem, 3vw, 2rem);
+      font-weight: 800;
+      color: #f8fafc;
+      margin-bottom: 36px;
+      line-height: 1.3;
+    }
+
+    .l-position-compare {
+      position: relative;
+      max-width: 420px;
+      margin: 0 auto;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .l-position-old {
+      padding: 40px 24px;
+      background: rgba(239, 68, 68, 0.06);
+      border: 1px solid rgba(239, 68, 68, 0.15);
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+
+    .l-position-new {
+      padding: 44px 24px;
+      background: linear-gradient(135deg, rgba(245, 191, 56, 0.1), rgba(16, 185, 129, 0.06));
+      border: 1px solid rgba(245, 191, 56, 0.25);
+      border-top-left-radius: 0;
+      border-top-right-radius: 0;
+    }
+
+    .l-position-old .l-badge,
+    .l-position-new .l-badge {
+      display: block;
+      font-size: 0.7rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 10px;
+    }
+
+    .l-position-old .l-badge {
+      color: #f87171;
+    }
+
+    .l-position-new .l-badge {
+      color: var(--amber);
+    }
+
+    .l-position-old p,
+    .l-position-new p {
+      font-size: 1.05rem;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+
+    .l-position-old p {
+      color: #94a3b8;
+    }
+
+    .l-position-new p {
+      color: #f8fafc;
+    }
+
+    .l-position-old p em,
+    .l-position-new p em {
+      font-style: normal;
+      font-weight: 800;
+    }
+
+    .l-position-old p em {
+      color: #f87171;
+    }
+
+    .l-position-new p em {
+      color: var(--amber);
+    }
+
+    /* ─── Migration Story ──────────────────────────────────── */
+    .l-migration {
+      max-width: 760px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .l-migration-step {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 20px;
+      background: rgba(13, 18, 30, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 12px;
+      transition: all 0.25s var(--ease);
+    }
+
+    .l-migration-step:hover {
+      border-color: rgba(245, 191, 56, 0.25);
+      transform: translateX(4px);
+    }
+
+    .l-migration-step-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+
+    .l-migration-step-icon i {
+      width: 17px;
+      height: 17px;
+    }
+
+    .l-migration-step-icon.red {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      color: #f87171;
+    }
+
+    .l-migration-step-icon.amber {
+      background: rgba(245, 191, 56, 0.1);
+      border: 1px solid rgba(245, 191, 56, 0.25);
+      color: var(--amber);
+    }
+
+    .l-migration-step-icon.green {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: var(--green);
+    }
+
+    .l-migration-step-icon.blue {
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      color: #38bdf8;
+    }
+
+    .l-migration-step-text {
+      font-size: 0.95rem;
+      color: #cbd5e1;
+      line-height: 1.5;
+    }
+
+    .l-migration-step-text strong {
+      color: #f8fafc;
+      display: block;
+      font-size: 1rem;
+      margin-bottom: 2px;
+    }
+
+    .l-migration-arrow {
+      display: flex;
+      justify-content: center;
+      color: #475569;
+      margin: 2px 0;
+    }
+
+    .l-migration-arrow i {
+      width: 18px;
+      height: 18px;
+    }
+
+    .l-migration-outcome {
+      margin-top: 28px;
+      text-align: center;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #e2e8f0;
+    }
+
+    .l-migration-outcome span {
+      color: var(--green);
     }
 
     /* ─── Features Section ─────────────────────────────────── */
@@ -2387,6 +2753,25 @@
         flex-direction: column;
         text-align: center;
       }
+
+      .l-problem-list {
+        grid-template-columns: 1fr;
+      }
+
+      .l-idea-layout {
+        grid-template-columns: 1fr;
+        gap: 32px;
+      }
+
+      .l-position-card {
+        padding: 40px 24px;
+      }
+
+      .l-migration-step {
+        flex-direction: column;
+        text-align: center;
+        gap: 10px;
+      }
     }
 
     @media (max-width: 600px) {
@@ -2446,20 +2831,21 @@
     <section class="l-hero" id="top">
       <div class="l-hero-inner">
         <div class="l-eyebrow">
-          <i data-lucide="layers-2" style="width:13px;height:13px"></i>
-          Distributed VPS Infrastructure
+          <i data-lucide="network" style="width:13px;height:13px"></i>
+          Distributed Linux Infrastructure
         </div>
-        <h1 class="l-h1">Combine your VPS resources<br>into <em>one unified platform</em></h1>
+        <h1 class="l-h1">Distributed Linux Infrastructure.<br><em>Built From Any VPS.</em></h1>
         <p class="l-lead">
-          PocketCloud is a self-hosted control plane that connects, manages, and coordinates
-          Linux VPS instances from any provider — through a single intelligent dashboard.
+          Turn scattered Linux servers into one self-hosted infrastructure platform.
+          Connect free tier instances, cloud VPS providers, dedicated servers, and home labs.
+          Manage them from one control plane while keeping your environments portable.
         </p>
         <div class="l-actions">
           <button class="l-btn-sign l-btn-amber" id="btnHeroDeploy" style="padding:12px 28px;font-size:0.95rem;">
             <i data-lucide="rocket" style="width:17px;height:17px"></i> Deploy PocketCloud
           </button>
           <button class="l-btn-sign l-btn-ghost" id="btnHeroDemo" style="padding:12px 24px;font-size:0.95rem;">
-            <i data-lucide="zap" style="width:17px;height:17px;color:#f5bf38"></i> Live Demo Mode
+            <i data-lucide="book-open" style="width:17px;height:17px;color:#f5bf38"></i> Read Documentation
           </button>
         </div>
         <div class="l-deploy-cmd-box"
@@ -2479,48 +2865,236 @@
             </button>
           </div>
         </div>
-        <div class="l-checks">
-          <span class="l-check"><i data-lucide="check-circle-2"></i> Run workloads across providers</span>
-          <span class="l-check"><i data-lucide="check-circle-2"></i> Replace expired servers easily</span>
-          <span class="l-check"><i data-lucide="check-circle-2"></i> Keep environments consistent</span>
-          <span class="l-check"><i data-lucide="check-circle-2"></i> Manage everything from one place</span>
-        </div>
       </div>
 
-      <!-- Topology diagram -->
+      <!-- Network topology visual -->
       <div class="l-topology">
         <div class="l-topo-head">
-          <span>pocketcloud / fleet topology</span>
+          <span>pocketcloud / distributed network</span>
           <span class="l-live">4 nodes connected</span>
         </div>
         <div class="l-diagram">
           <div class="l-nodes-row">
             <div class="l-node">
+              <div class="l-node-icon"><i data-lucide="cloud" style="width:16px;height:16px"></i></div>
               <h4>Oracle Free Tier</h4><small>ubuntu-24.04</small>
               <div class="l-node-status">Connected</div>
             </div>
             <div class="l-node">
-              <h4>AWS Credits</h4><small>debian-12</small>
+              <div class="l-node-icon"><i data-lucide="cloud" style="width:16px;height:16px"></i></div>
+              <h4>Hetzner</h4><small>debian-12</small>
               <div class="l-node-status">Connected</div>
             </div>
             <div class="l-node">
-              <h4>Hetzner / DO</h4><small>ubuntu-22.04</small>
+              <div class="l-node-icon"><i data-lucide="cpu" style="width:16px;height:16px"></i></div>
+              <h4>Home Lab</h4><small>ubuntu-22.04</small>
               <div class="l-node-status">Connected</div>
             </div>
           </div>
           <div class="l-connector"></div>
           <div class="l-cp">
-            <div class="l-cp-icon"><i data-lucide="server-cog" style="width:18px;height:18px"></i></div>
-            <h4>PocketCloud Control Plane</h4>
-            <p>One place to connect, monitor, and coordinate your distributed fleet.</p>
+            <div class="l-cp-icon"><i data-lucide="network" style="width:18px;height:18px"></i></div>
+            <h4>PocketCloud Network</h4>
+            <p>One infrastructure layer across all your machines.</p>
             <code>Outbound TLS agent connection</code>
+          </div>
+          <div class="l-connector"></div>
+          <div class="l-cp l-cp-output">
+            <div class="l-cp-icon"><i data-lucide="layers" style="width:18px;height:18px"></i></div>
+            <h4>Unified Infrastructure</h4>
+            <p>Apps | Services | Deployments | Backups</p>
           </div>
         </div>
       </div>
     </section>
 
+    <!-- ── Problem Section ─────────────────────────────────── -->
+    <section class="l-section" id="problem">
+      <div class="l-section-head">
+        <div class="l-section-eyebrow">
+          <i data-lucide="alert-triangle" style="width:13px;height:13px"></i> The Problem
+        </div>
+        <h2 class="l-section-title">Your servers are scattered.<br>Your infrastructure shouldn't be.</h2>
+        <p class="l-section-desc">Today infrastructure is fragmented. Each machine becomes another thing to maintain.
+        </p>
+      </div>
+      <div class="l-problem-list">
+        <div class="l-problem-item">
+          <i data-lucide="cloud"></i>
+          <span>Oracle Free Tier <span class="l-problem-tag">here</span></span>
+        </div>
+        <div class="l-problem-item">
+          <i data-lucide="cloud"></i>
+          <span>DigitalOcean <span class="l-problem-tag">there</span></span>
+        </div>
+        <div class="l-problem-item">
+          <i data-lucide="cpu"></i>
+          <span>Home server <span class="l-problem-tag">somewhere else</span></span>
+        </div>
+        <div class="l-problem-item">
+          <i data-lucide="refresh-cw"></i>
+          <span>Replacement VPS <span class="l-problem-tag">when credits expire</span></span>
+        </div>
+      </div>
+      <div class="l-problem-verdict">
+        Each machine becomes another thing to maintain.<br>
+        <em>Your infrastructure shouldn't be scattered.</em>
+      </div>
+    </section>
+
+    <!-- ── Idea Section ────────────────────────────────────── -->
+    <section class="l-section" id="idea" style="padding-top: 40px;">
+      <div class="l-idea-layout">
+        <div>
+          <div class="l-section-eyebrow" style="margin-bottom: 16px;">
+            <i data-lucide="lightbulb" style="width:13px;height:13px"></i> The Idea
+          </div>
+          <div class="l-idea-tagline">Servers are replaceable.<br><em>Infrastructure is not.</em></div>
+          <p class="l-idea-body">
+            PocketCloud separates your environment from the machine running it.
+            Your VPS can change. Your infrastructure stays.
+          </p>
+          <div class="l-idea-divider">
+            <strong>Your VPS can change. <span>Your infrastructure stays.</span></strong>
+            <p>Capture environments as portable blueprints. Restore them anywhere.</p>
+          </div>
+        </div>
+        <div class="l-blueprint-card">
+          <div class="l-blueprint-head">
+            <span>blueprint.yaml</span>
+            <span style="color:#10b981">● portable</span>
+          </div>
+          <div class="l-blueprint-body">
+            <span class="l-bp-key">version</span>: <span class="l-bp-str">"1.1"</span><br>
+            <span class="l-bp-key">name</span>: <span class="l-bp-str">web-stack</span><br>
+            <span class="l-bp-key">os</span>: <span class="l-bp-str">ubuntu-24.04</span><br>
+            <span class="l-bp-key">packages</span>:<br>
+            &nbsp;&nbsp;- <span class="l-bp-str">nginx</span><br>
+            &nbsp;&nbsp;- <span class="l-bp-str">docker</span><br>
+            &nbsp;&nbsp;- <span class="l-bp-str">nodejs</span><br>
+            <span class="l-bp-key">services</span>:<br>
+            &nbsp;&nbsp;- <span class="l-bp-str">nginx</span><br>
+            &nbsp;&nbsp;- <span class="l-bp-str">postgres</span><br>
+            <span class="l-bp-key">ports</span>:<br>
+            &nbsp;&nbsp;- <span class="l-bp-str">80</span><br>
+            &nbsp;&nbsp;- <span class="l-bp-str">443</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── How It Works (4 steps) ──────────────────────────── -->
+    <section class="l-section" id="how-it-works" style="padding-top: 40px;">
+      <div class="l-section-head">
+        <div class="l-section-eyebrow">
+          <i data-lucide="route" style="width:13px;height:13px"></i> How It Works
+        </div>
+        <h2 class="l-section-title">From scattered servers to one infrastructure</h2>
+        <p class="l-section-desc">Connect machines, manage from one control plane, capture environments, rebuild
+          anywhere.</p>
+      </div>
+      <div class="l-steps">
+        <div class="l-step">
+          <div class="l-step-num">1</div>
+          <h3>Connect Linux Machines</h3>
+          <p>Install the outbound agent on any Linux VPS. It connects securely to your control plane over TLS.</p>
+        </div>
+        <div class="l-step">
+          <div class="l-step-num">2</div>
+          <h3>Manage From One Control Plane</h3>
+          <p>Monitor resources, services, and deployments across every connected machine from a single dashboard.</p>
+        </div>
+        <div class="l-step">
+          <div class="l-step-num">3</div>
+          <h3>Capture Environments</h3>
+          <p>Store infrastructure definitions as portable blueprints — packages, services, ports, and configuration.</p>
+        </div>
+        <div class="l-step">
+          <div class="l-step-num">4</div>
+          <h3>Rebuild Anywhere</h3>
+          <p>Move workloads to a new provider when credits expire or pricing changes. Your infrastructure follows.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Position Section ────────────────────────────────── -->
+    <section class="l-section" id="position" style="padding-top: 40px;">
+      <div class="l-position-card">
+        <div class="l-section-eyebrow" style="margin-bottom: 16px;">
+          <i data-lucide="compass" style="width:13px;height:13px"></i> The Difference
+        </div>
+        <div class="l-position-heading">Most tools manage servers.<br>PocketCloud manages infrastructure made from
+          servers.</div>
+        <div class="l-position-compare">
+          <div class="l-position-old">
+            <span class="l-badge">Other Tools</span>
+            <p>"Manage <em>this server</em>."</p>
+          </div>
+          <div class="l-position-new">
+            <span class="l-badge">PocketCloud</span>
+            <p>"Combine <em>many servers</em> into one resilient infrastructure."</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Migration Story ─────────────────────────────────── -->
+    <section class="l-section" id="migration" style="padding-top: 40px;">
+      <div class="l-section-head">
+        <div class="l-section-eyebrow">
+          <i data-lucide="git-branch" style="width:13px;height:13px"></i> Real Scenario
+        </div>
+        <h2 class="l-section-title">When a free tier expires</h2>
+        <p class="l-section-desc">The entire story in 10 seconds.</p>
+      </div>
+      <div class="l-migration">
+        <div class="l-migration-step">
+          <div class="l-migration-step-icon red"><i data-lucide="alert-octagon"></i></div>
+          <div class="l-migration-step-text">
+            <strong>Oracle VPS expires</strong>
+            Your free tier instance is about to be reclaimed.
+          </div>
+        </div>
+        <div class="l-migration-arrow"><i data-lucide="chevron-down"></i></div>
+        <div class="l-migration-step">
+          <div class="l-migration-step-icon amber"><i data-lucide="search"></i></div>
+          <div class="l-migration-step-text">
+            <strong>PocketCloud detects replacement needed</strong>
+            The control plane flags the node as offline and identifies the blueprint.
+          </div>
+        </div>
+        <div class="l-migration-arrow"><i data-lucide="chevron-down"></i></div>
+        <div class="l-migration-step">
+          <div class="l-migration-step-icon blue"><i data-lucide="plug"></i></div>
+          <div class="l-migration-step-text">
+            <strong>New Hetzner VPS connected</strong>
+            Install the agent on a fresh machine. It joins the network in seconds.
+          </div>
+        </div>
+        <div class="l-migration-arrow"><i data-lucide="chevron-down"></i></div>
+        <div class="l-migration-step">
+          <div class="l-migration-step-icon green"><i data-lucide="file-code"></i></div>
+          <div class="l-migration-step-text">
+            <strong>Blueprint restored</strong>
+            Packages, services, and configuration are reinstalled from the portable spec.
+          </div>
+        </div>
+        <div class="l-migration-arrow"><i data-lucide="chevron-down"></i></div>
+        <div class="l-migration-step">
+          <div class="l-migration-step-icon green"><i data-lucide="check-circle-2"></i></div>
+          <div class="l-migration-step-text">
+            <strong>Application running again</strong>
+            Your infrastructure survived the provider change.
+          </div>
+        </div>
+      </div>
+      <div class="l-migration-outcome">
+        Your VPS can change. <span>Your infrastructure stays.</span>
+      </div>
+    </section>
+
     <!-- ── Features Section ────────────────────────────────── -->
-    <section class="l-section" id="features">
+    <section class="l-section" id="features" style="padding-top: 40px;">
       <div class="l-section-head">
         <div class="l-section-eyebrow">
           <i data-lucide="sparkles" style="width:13px;height:13px"></i> Capabilities
@@ -2566,36 +3140,6 @@
           <h3>Task Orchestration</h3>
           <p>Dispatch allow-listed maintenance actions — package updates, Docker installs, service restarts — to any
             node.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── How It Works ────────────────────────────────────── -->
-    <section class="l-section" id="how-it-works" style="padding-top: 40px;">
-      <div class="l-section-head">
-        <div class="l-section-eyebrow">
-          <i data-lucide="route" style="width:13px;height:13px"></i> Workflow
-        </div>
-        <h2 class="l-section-title">Three steps to a unified fleet</h2>
-        <p class="l-section-desc">Deploy the control plane, connect your VPS instances, and start orchestrating — all in
-          under five minutes.</p>
-      </div>
-      <div class="l-steps">
-        <div class="l-step">
-          <div class="l-step-num">1</div>
-          <h3>Deploy Control Plane</h3>
-          <p>Run a single command on a fresh Ubuntu VPS to install the PocketCloud control plane and dashboard.</p>
-        </div>
-        <div class="l-step">
-          <div class="l-step-num">2</div>
-          <h3>Connect Your Nodes</h3>
-          <p>Install the outbound agent on any Linux VPS. It connects back to your control plane over TLS — no inbound
-            ports.</p>
-        </div>
-        <div class="l-step">
-          <div class="l-step-num">3</div>
-          <h3>Orchestrate Everything</h3>
-          <p>Monitor metrics, run commands, capture blueprints, and migrate environments — all from one dashboard.</p>
         </div>
       </div>
     </section>
